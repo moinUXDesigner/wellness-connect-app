@@ -1,0 +1,17 @@
+node_modules
+dist
+dev-dist
+.git
+.vite
+Counselling_App_Images
+database_backups
+design_context
+*.zip
+docs
+android
+.claude
+.codex
+.agents
+.vscode
+.idea
+*.log

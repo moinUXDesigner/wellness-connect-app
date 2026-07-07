@@ -23,7 +23,18 @@ pnpm-debug.log*
 
 # Database backups
 database_backups/*.sql
+database_backups/*.sql.enc
+database_backups/*.dump
 database_backups/*.key
+
+# Non-source clutter
+Counselling_App_Images/
+dev-dist/
+Design Context.zip
+backend_login_response.json
+Full backend and frontend prompt.txt
+Roles & Responsibilities.txt
+default_shadcn_theme.css
 
 # Test and coverage output
 coverage/

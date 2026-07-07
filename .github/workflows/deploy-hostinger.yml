@@ -1,0 +1,88 @@
+name: Deploy to Hostinger
+
+on:
+  workflow_run:
+    workflows: ['Frontend CI', 'Backend CI']
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy-frontend:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Frontend CI'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build production bundle
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_DEMO_MODE: 'false'
+        run: npm run build
+
+      - name: Copy SPA routing config into build output
+        run: cp deploy/wellness/.htaccess dist/.htaccess
+
+      - name: Deploy dist/ to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_HOST }}
+          username: ${{ secrets.HOSTINGER_FTP_USER }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: /public_html/wellness/
+
+  deploy-backend:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Backend CI'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      - name: Deploy backend to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_HOST }}
+          username: ${{ secrets.HOSTINGER_FTP_USER }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./backend/
+          server-dir: /public_html/api-wellness/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/tests/**
+            **/.env
+            **/.env.*
+
+      # Runs migrate/config-cache/route-cache/storage-link over SSH.
+      # Requires Hostinger terminal (SSH) access — confirm this is available
+      # on the plan before enabling; otherwise run these commands manually
+      # per docs/DEPLOY_HOSTINGER.md after the FTP upload completes.
+      - name: Run post-deploy artisan commands
+        if: ${{ vars.HOSTINGER_SSH_ENABLED == 'true' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          script: |
+            cd public_html/api-wellness
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan storage:link

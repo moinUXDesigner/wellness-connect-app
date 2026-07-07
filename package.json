@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "build:cap": "vite build --mode capacitor",
     "cap:sync": "npm run build:cap && npx @capacitor/cli sync android",
     "cap:copy": "npm run build:cap && npx @capacitor/cli copy android",

@@ -1,0 +1,13 @@
+vendor
+node_modules
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+tests
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.log
+.phpunit.cache
