@@ -1,5 +1,8 @@
 @import 'tailwindcss' source(none);
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant short (@media (max-height: 760px));
+@custom-variant shorter (@media (max-height: 700px));
+@custom-variant shortest (@media (max-height: 680px));
 @source '../**/*.{js,ts,jsx,tsx}';
 
 @import 'tw-animate-css';

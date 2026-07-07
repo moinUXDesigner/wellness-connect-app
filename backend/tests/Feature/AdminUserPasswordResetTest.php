@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AdminPasswordResetMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -14,6 +16,8 @@ class AdminUserPasswordResetTest extends TestCase
 
     public function test_admin_can_reset_registered_user_password_and_revoke_tokens(): void
     {
+        Mail::fake();
+
         $admin = User::factory()->create([
             'role' => 'admin',
             'status' => 'active',
@@ -27,13 +31,21 @@ class AdminUserPasswordResetTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/reset-password")
-            ->assertOk()
-            ->assertJsonPath('user.id', (string) $user->id);
+        $response = $this->postJson("/api/v1/admin/users/{$user->id}/reset-password");
+        $response->assertOk()->assertJsonPath('user.id', (string) $user->id);
+
+        // Response must NOT expose the temporary password
+        $this->assertArrayNotHasKey('password', $response->json());
 
         $user->refresh();
 
-        $this->assertTrue(Hash::check('password123', $user->password));
+        // Old password must no longer work
+        $this->assertFalse(Hash::check('old-password', $user->password));
+
+        // Notification email must be sent
+        Mail::assertSent(AdminPasswordResetMail::class, fn ($mail) => $mail->hasTo($user->email));
+
+        // All sessions revoked
         $this->assertDatabaseMissing('personal_access_tokens', [
             'tokenable_id' => $user->id,
             'tokenable_type' => User::class,

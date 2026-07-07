@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AdminPasswordResetMail;
 use App\Models\Appointment;
 use App\Models\Notification;
 use App\Models\RoleChangeAudit;
@@ -12,8 +13,8 @@ use App\Models\WellnessPackage;
 use App\Services\ActivityLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -152,12 +153,16 @@ class AdminController extends Controller
     {
         $this->authorizeAdmin($request);
 
+        $temporaryPassword = Str::password(12);
+
         $user->forceFill([
-            'password' => 'password123',
+            'password' => $temporaryPassword,
             'remember_token' => Str::random(60),
         ])->save();
 
         $user->tokens()->delete();
+
+        Mail::to($user->email)->send(new AdminPasswordResetMail($temporaryPassword, $user->name));
 
         $this->activityLogs->record('auth', 'password_reset_forced', sprintf('%s reset the password for %s.', $request->user()->name, $user->name), [
             'actor' => $request->user(),
@@ -168,7 +173,7 @@ class AdminController extends Controller
         ]);
 
         return response()->json([
-            'message' => "Password reset for {$user->email}. New password: password123",
+            'message' => "Password reset. {$user->email} has been notified by email.",
             'user' => [
                 'id' => (string) $user->id,
                 'email' => (string) $user->email,
@@ -199,21 +204,31 @@ class AdminController extends Controller
             'role' => (string) $user->role,
         ];
 
-        $blockers = $this->userDeletionBlockers($user);
-        if ($blockers !== []) {
-            return $this->blockedUserDeletionResponse($blockers);
-        }
+        DB::transaction(function () use ($user): void {
+            $user->tokens()->delete();
+            // Anonymise PII — pseudonymise identifying fields and retain clinical records
+            // for the legal retention period. SoftDeletes on clinical models handle
+            // scheduled purges after the retention window, separately.
+            $user->update([
+                'name'              => 'Deleted User #' . $user->id,
+                'email'             => 'deleted+' . $user->id . '@wellnessconnect.internal',
+                'phone'             => null,
+                'phone_verified_at' => null,
+                'google_id'         => null,
+                'avatar_url'        => null,
+                'wellness_goal'     => null,
+                'status'            => 'suspended',
+            ]);
+            if ($user->clientProfile) {
+                $user->clientProfile->update([
+                    'profile_photo_url'        => null,
+                    'emergency_contact_name'   => null,
+                    'emergency_contact_phone'  => null,
+                ]);
+            }
+        });
 
-        try {
-            DB::transaction(function () use ($user): void {
-                $user->tokens()->delete();
-                $user->delete();
-            });
-        } catch (QueryException) {
-            return $this->blockedUserDeletionResponse($this->userDeletionBlockers($user));
-        }
-
-        $this->activityLogs->record('account', 'user_deleted', sprintf('%s deleted the account for %s.', $actor->name, $deletedUser['name']), [
+        $this->activityLogs->record('account', 'user_deleted', sprintf('%s anonymised the account for %s.', $actor->name, $deletedUser['name']), [
             'actor' => $actor,
             'targetRole' => $deletedUser['role'],
             'subject' => ['type' => User::class, 'id' => $deletedUser['id'], 'label' => $deletedUser['name']],
@@ -222,7 +237,7 @@ class AdminController extends Controller
         ]);
 
         return response()->json([
-            'message' => "Deleted user {$deletedUser['email']}.",
+            'message' => "Account for {$deletedUser['email']} has been anonymised.",
             'user' => $deletedUser,
         ]);
     }
@@ -398,80 +413,6 @@ class AdminController extends Controller
     private function authorizeAdmin(Request $request): void
     {
         abort_unless($request->user()?->role === 'admin', 403, 'Admin access required.');
-    }
-
-    private function userDeletionBlockers(User $user): array
-    {
-        $blockers = [];
-        $addBlocker = static function (array &$items, string $code, string $label, int $count): void {
-            if ($count > 0) {
-                $items[] = ['code' => $code, 'label' => $label, 'count' => $count];
-            }
-        };
-
-        $addBlocker(
-            $blockers,
-            'appointment_events',
-            'Appointment audit events',
-            DB::table('appointment_events')->where('actor_user_id', $user->id)->count()
-        );
-        $addBlocker(
-            $blockers,
-            'credit_adjustments',
-            'Credit adjustment actions',
-            DB::table('credit_adjustments')->where('actor_id', $user->id)->count()
-        );
-        $addBlocker(
-            $blockers,
-            'membership_refund_actions',
-            'Membership refund actions',
-            DB::table('membership_refunds')->where('actor_user_id', $user->id)->count()
-        );
-
-        $subscriptionIds = DB::table('membership_subscriptions')
-            ->where('client_user_id', $user->id)
-            ->pluck('id');
-
-        if ($subscriptionIds->isNotEmpty()) {
-            $addBlocker(
-                $blockers,
-                'membership_receipts',
-                'Membership receipts',
-                DB::table('membership_receipts')->whereIn('subscription_id', $subscriptionIds)->count()
-            );
-            $addBlocker(
-                $blockers,
-                'membership_refunds',
-                'Membership refunds',
-                DB::table('membership_refunds')->whereIn('subscription_id', $subscriptionIds)->count()
-            );
-            $addBlocker(
-                $blockers,
-                'entitlement_periods',
-                'Membership entitlement history',
-                DB::table('entitlement_periods')->whereIn('subscription_id', $subscriptionIds)->count()
-            );
-            $addBlocker(
-                $blockers,
-                'revenue_recognitions',
-                'Revenue recognition history',
-                DB::table('revenue_recognitions')->whereIn('subscription_id', $subscriptionIds)->count()
-            );
-        }
-
-        return $blockers;
-    }
-
-    private function blockedUserDeletionResponse(array $blockers): JsonResponse
-    {
-        $message = $blockers === []
-            ? 'This user cannot be permanently deleted because an unidentified protected record is linked to the account.'
-            : 'This user cannot be permanently deleted because protected records are linked to the account.';
-
-        return response()->json([
-            'message' => $message,
-            'blockers' => $blockers,
-        ], 409);
     }
 
     private function roleChangePayload(RoleChangeAudit $audit): array

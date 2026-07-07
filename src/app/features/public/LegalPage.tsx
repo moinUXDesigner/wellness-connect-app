@@ -54,12 +54,12 @@ const privacySections: LegalSection[] = [
 const pageCopy = {
   terms: {
     title: 'Terms of Service',
-    intro: 'These terms explain the basic rules for using WellnessConnect. This page is product-ready placeholder copy and should be reviewed by legal counsel before production launch.',
+    intro: 'These terms explain the basic rules for using WellnessConnect.',
     sections: termsSections,
   },
   privacy: {
     title: 'Privacy Policy',
-    intro: 'This policy explains how WellnessConnect handles personal and wellness-related information. This page is product-ready placeholder copy and should be reviewed by legal counsel before production launch.',
+    intro: 'This policy explains how WellnessConnect handles personal and wellness-related information.',
     sections: privacySections,
   },
 };
@@ -69,6 +69,12 @@ export default function LegalPage({ type }: { type: 'terms' | 'privacy' }) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      {import.meta.env.DEV && (
+        <div className="mb-6 rounded-lg border border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          <strong>Development notice:</strong> These documents have not been reviewed by legal counsel.
+          Replace with reviewed content before launch.
+        </div>
+      )}
       <div className="mb-8">
         <Link to="/get-started?step=5" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
           Back to get started

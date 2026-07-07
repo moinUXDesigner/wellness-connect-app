@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['exercise_instance_id', 'client_id', 'response_json', 'score_json', 'emotion_before', 'emotion_after', 'client_reflection', 'submitted_at'])]
 class CbtExerciseResponse extends Model
 {
+    use SoftDeletes;
     protected function casts(): array
     {
         return [

@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 class TrainerApplicationController extends Controller
 {
     private const SCREEN_IDS = [
-        'personalInfo', 'dateOfBirth', 'contact', 'location', 'photo', 'certification',
+        'personalInfo', 'dateOfBirth', 'location', 'photo', 'certification',
         'expertise', 'experience', 'showcase', 'clientPitch', 'training', 'availability',
         'identity', 'payout', 'review',
     ];

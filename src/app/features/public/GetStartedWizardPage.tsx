@@ -69,7 +69,6 @@ type WizardDraft = {
   name?: string;
   goalId?: string;
   email?: string;
-  password?: string;
 };
 
 function readWizardDraft(): WizardDraft {
@@ -82,7 +81,6 @@ function readWizardDraft(): WizardDraft {
 }
 
 function getRestorableStep(draft: WizardDraft): Step {
-  if (draft.password && draft.password.length >= 8) return 5;
   if (draft.email && draft.email.includes('@')) return 4;
   if (draft.goalId) return 3;
   if (draft.name?.trim()) return 2;
@@ -102,7 +100,8 @@ export default function GetStartedWizardPage() {
   const [name, setName] = useState(draft.name ?? '');
   const [goalId, setGoalId] = useState(draft.goalId ?? '');
   const [email, setEmail] = useState(draft.email ?? '');
-  const [password, setPassword] = useState(draft.password ?? '');
+  const [password, setPassword] = useState('');
+  const [consent, setConsent] = useState(false);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [postAuthPath, setPostAuthPath] = useState('/client/intake');
@@ -111,8 +110,8 @@ export default function GetStartedWizardPage() {
   const firstName = name.split(' ')[0];
 
   useEffect(() => {
-    sessionStorage.setItem(wizardDraftKey, JSON.stringify({ step, name, goalId, email, password }));
-  }, [email, goalId, name, password, step]);
+    sessionStorage.setItem(wizardDraftKey, JSON.stringify({ step, name, goalId, email }));
+  }, [email, goalId, name, step]);
 
   function goBack() {
     setNotice('');
@@ -130,7 +129,7 @@ export default function GetStartedWizardPage() {
         password,
         role: 'client',
         primary_goal: selectedGoal.primaryGoal,
-        consent_to_terms: true,
+        consent_to_terms: consent,
       });
       setPostAuthPath(getPostAuthRedirectPath(user));
       sessionStorage.removeItem(wizardDraftKey);
@@ -309,18 +308,26 @@ export default function GetStartedWizardPage() {
                 ))}
               </dl>
             </div>
-            <p className="text-center text-xs text-slate-400">
-              By creating your account you agree to our{' '}
-              <Link to="/terms-of-service" className="underline hover:text-slate-600">Terms of Service</Link>
-              {' '}and{' '}
-              <Link to="/privacy-policy" className="underline hover:text-slate-600">Privacy Policy</Link>.
-            </p>
+            <label className="flex items-start gap-2.5 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-indigo-600"
+              />
+              <span>
+                I agree to the{' '}
+                <Link to="/terms-of-service" className="underline hover:text-slate-800">Terms of Service</Link>
+                {' '}and{' '}
+                <Link to="/privacy-policy" className="underline hover:text-slate-800">Privacy Policy</Link>.
+              </span>
+            </label>
             {notice && (
               <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{notice}</p>
             )}
             <button
               onClick={createAccount}
-              disabled={loading}
+              disabled={!consent || loading}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (

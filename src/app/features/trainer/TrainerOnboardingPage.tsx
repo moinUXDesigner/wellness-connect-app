@@ -83,15 +83,22 @@ import { getAuthState } from '../auth/auth';
 import { logoutRequest } from '../auth/apiAuth';
 import {
   fetchCurrentTrainerApplicationFromApi,
-  requestTrainerRegistrationOtp,
-  resendTrainerRegistrationOtp,
+  registerTrainerWithGoogle,
+  requestTrainerEmailOtp,
+  requestTrainerMobileOtp,
+  resendTrainerEmailOtp,
+  resendTrainerMobileOtp,
   saveTrainerDraftToApi,
   submitTrainerApplicationToApi,
   TrainerApplicationSubmissionError,
-  verifyTrainerRegistrationOtp,
-  type TrainerOtpChallenge,
+  verifyTrainerEmailOtp,
+  verifyTrainerMobileOtp,
+  type TrainerEmailOtpChallenge,
+  type TrainerMobileOtpChallenge,
 } from './trainerApplicationsApi';
 import { setCachedTrainerAccessStateFromApplication } from './trainerAccess';
+import { lookupStateForCity } from './data/indiaCityState';
+import { useGoogleIdentity } from './useGoogleIdentity';
 
 const reviewScreenIndex = trainerOnboardingScreens.findIndex((screen) => screen.id === 'review');
 const successScreenIndex = trainerOnboardingScreens.findIndex((screen) => screen.id === 'success');
@@ -161,34 +168,32 @@ type TrainerResponsiveSegment =
   | 'reviewOperations'
   | 'reviewSubmit';
 
-type TrainerAccountStep = 'name' | 'email' | 'mobile' | 'password';
+type TrainerProfileStep = 'name' | 'email' | 'password';
 
-// Compact account screens walk through one required field at a time on phones/tablets.
-const trainerAccountSteps: TrainerAccountStep[] = ['name', 'email', 'mobile', 'password'];
+// Compact profile screens walk through one required field at a time on phones/tablets.
+const trainerProfileSteps: TrainerProfileStep[] = ['name', 'email', 'password'];
 
-function useTrainerViewportMode() {
-  const [viewport, setViewport] = useState(() => ({
-    width: typeof window === 'undefined' ? 1280 : window.innerWidth,
-    height: typeof window === 'undefined' ? 900 : window.innerHeight,
-  }));
+function useMatchMedia(query: string) {
+  const [matches, setMatches] = useState(() => (typeof window === 'undefined' ? false : window.matchMedia(query).matches));
 
   useEffect(() => {
-    const updateViewport = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
-    updateViewport();
-    window.addEventListener('resize', updateViewport);
-    window.addEventListener('orientationchange', updateViewport);
-    return () => {
-      window.removeEventListener('resize', updateViewport);
-      window.removeEventListener('orientationchange', updateViewport);
-    };
-  }, []);
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
 
-  return {
-    isNarrow: viewport.width < 768,
-    isTablet: viewport.width >= 768 && viewport.width < 1024,
-    isCompactAccount: viewport.width < 1024,
-    isShort: viewport.height < 760,
-  };
+  return matches;
+}
+
+function useTrainerViewportMode() {
+  const isNarrow = useMatchMedia('(max-width: 767px)');
+  const isTablet = useMatchMedia('(min-width: 768px) and (max-width: 1023px)');
+  const isCompactAccount = useMatchMedia('(max-width: 1023px)');
+  const isShort = useMatchMedia('(max-height: 759px)');
+
+  return { isNarrow, isTablet, isCompactAccount, isShort };
 }
 
 function getResponsiveSegments(screenId: TrainerOnboardingScreenId, isSegmented: boolean): TrainerResponsiveSegment[] {
@@ -452,7 +457,8 @@ export default function TrainerOnboardingPage() {
     mode: 'onTouched',
   });
 
-  const values = useWatch({ control: form.control });
+  const watchedValues = useWatch({ control: form.control });
+  const values = useMemo(() => mergeTrainerOnboardingValues(watchedValues), [watchedValues]);
   const currentScreen = trainerOnboardingScreens[screenIndex];
   const responsiveSegments = getResponsiveSegments(currentScreen.id, isSegmented);
   const activeSegment = responsiveSegments[Math.min(segmentIndex, responsiveSegments.length - 1)] ?? 'all';
@@ -500,7 +506,7 @@ export default function TrainerOnboardingPage() {
     const payload: PersistedTrainerOnboardingState = {
       version: trainerOnboardingSchemaVersion,
       screenId: trainerOnboardingScreens[screenIndex].id,
-      values: toLocalPersistedValues(values ?? trainerOnboardingDefaultValues),
+      values: toLocalPersistedValues(values),
       submitted,
       submittedAt,
       savedAt: new Date().toISOString(),
@@ -520,7 +526,7 @@ export default function TrainerOnboardingPage() {
 
     const timeout = window.setTimeout(() => {
       void saveTrainerDraftToApi({
-        values: values ?? trainerOnboardingDefaultValues,
+        values,
         currentScreen: currentScreen.id === 'success' ? 'review' : currentScreen.id,
       })
         .then((application) => {
@@ -639,64 +645,64 @@ export default function TrainerOnboardingPage() {
     }
   }
 
-  const reviewSections = useMemo(
+  const reviewSections = useMemo<Array<{ title: string; screenId: TrainerOnboardingScreenId; rows: [string, string][] }>>(
     () => [
       {
         title: 'Personal details',
         screenId: 'personalInfo' as const,
         rows: [
-          ['Full name', values?.profile.fullName || 'Not added yet'],
-          ['Gender', values?.profile.gender || 'Not added yet'],
-          ['Date of birth', formatDate(values?.profile.dateOfBirth || '')],
-          ['Email', values?.profile.email || 'Not added yet'],
-          ['Mobile', values?.profile.mobile || 'Not added yet'],
-          ['Location', values?.profile.city && values?.profile.state ? `${values.profile.city}, ${values.profile.state}` : 'Not added yet'],
+          ['Full name', values.profile.fullName || 'Not added yet'],
+          ['Gender', values.profile.gender || 'Not added yet'],
+          ['Date of birth', formatDate(values.profile.dateOfBirth || '')],
+          ['Email', values.profile.email || 'Not added yet'],
+          ['Mobile', values.profile.mobile || 'Not added yet'],
+          ['Location', values.profile.city && values.profile.state ? `${values.profile.city}, ${values.profile.state}` : 'Not added yet'],
         ],
       },
       {
         title: 'Profile photo and certification',
         screenId: 'photo' as const,
         rows: [
-          ['Profile photo', values?.photo.file?.name || 'Not uploaded yet'],
-          ['Certification institute', values?.certification.institute || 'Not added yet'],
-          ['Certification type', values?.certification.type || 'Not added yet'],
-          ['Certificate file', values?.certification.certificate?.name || 'Not uploaded yet'],
+          ['Profile photo', values.photo.file?.name || 'Not uploaded yet'],
+          ['Certification institute', values.certification.institute || 'Not added yet'],
+          ['Certification type', values.certification.type || 'Not added yet'],
+          ['Certificate file', values.certification.certificate?.name || 'Not uploaded yet'],
         ],
       },
       {
         title: 'Expertise and experience',
         screenId: 'expertise' as const,
         rows: [
-          ['Expertise', values?.expertise.length ? values.expertise.join(', ') : 'Not added yet'],
-          ['Years experience', values?.experience.yearsExperience || 'Not added yet'],
-          ['Clients trained', values?.experience.clientsTrained || 'Not added yet'],
-          ['Why clients should choose you', values?.clientPitch || 'Not added yet'],
+          ['Expertise', values.expertise.length ? values.expertise.join(', ') : 'Not added yet'],
+          ['Years experience', values.experience.yearsExperience || 'Not added yet'],
+          ['Clients trained', values.experience.clientsTrained || 'Not added yet'],
+          ['Why clients should choose you', values.clientPitch || 'Not added yet'],
         ],
       },
       {
         title: 'Showcase and coaching style',
         screenId: 'showcase' as const,
         rows: [
-          ['Transformation photos', values?.showcase.transformationPhotos.length ? values.showcase.transformationPhotos.map((item) => item.name).join(', ') : 'Skipped for now'],
-          ['Videos', values?.showcase.videos.length ? values.showcase.videos.map((item) => item.name).join(', ') : 'Skipped for now'],
-          ['Training philosophy', values?.training.philosophy || 'Not added yet'],
-          ['Introduction video', values?.training.introductionVideo?.name || 'Skipped for now'],
+          ['Transformation photos', values.showcase.transformationPhotos.length ? values.showcase.transformationPhotos.map((item) => item.name).join(', ') : 'Skipped for now'],
+          ['Videos', values.showcase.videos.length ? values.showcase.videos.map((item) => item.name).join(', ') : 'Skipped for now'],
+          ['Training philosophy', values.training.philosophy || 'Not added yet'],
+          ['Introduction video', values.training.introductionVideo?.name || 'Skipped for now'],
         ],
       },
       {
         title: 'Availability and verification',
         screenId: 'availability' as const,
         rows: [
-          ['Training modes', values?.availability.modes.length ? values.availability.modes.join(', ') : 'Not added yet'],
-          ['Available days', values?.availability.days.length ? values.availability.days.join(', ') : 'Not added yet'],
-          ['Per session rate', values?.availability.perSessionRateInr ? `INR ${values.availability.perSessionRateInr}` : 'Not added yet'],
-          ['Monthly rate', values?.availability.monthlyRateInr ? `INR ${values.availability.monthlyRateInr}` : 'Not added yet'],
-          ['Pricing notes', values?.availability.pricingPlans || 'Not added yet'],
-          ['PAN', values?.identity.pan?.name || 'Not uploaded yet'],
-          ['Primary ID', values?.identity.aadhaar?.name || values?.identity.passport?.name || values?.identity.drivingLicense?.name || 'Not uploaded yet'],
-          ['Bank name', values?.payout.bankName || 'Not added yet'],
-          ['Account number', values?.payout.accountNumber ? `•••• ${values.payout.accountNumber.slice(-4)}` : 'Not added yet'],
-          ['IFSC', values?.payout.ifsc || 'Not added yet'],
+          ['Training modes', values.availability.modes.length ? values.availability.modes.join(', ') : 'Not added yet'],
+          ['Available days', values.availability.days.length ? values.availability.days.join(', ') : 'Not added yet'],
+          ['Per session rate', values.availability.perSessionRateInr ? `INR ${values.availability.perSessionRateInr}` : 'Not added yet'],
+          ['Monthly rate', values.availability.monthlyRateInr ? `INR ${values.availability.monthlyRateInr}` : 'Not added yet'],
+          ['Pricing notes', values.availability.pricingPlans || 'Not added yet'],
+          ['PAN', values.identity.pan?.name || 'Not uploaded yet'],
+          ['Primary ID', values.identity.aadhaar?.name || values.identity.passport?.name || values.identity.drivingLicense?.name || 'Not uploaded yet'],
+          ['Bank name', values.payout.bankName || 'Not added yet'],
+          ['Account number', values.payout.accountNumber ? `•••• ${values.payout.accountNumber.slice(-4)}` : 'Not added yet'],
+          ['IFSC', values.payout.ifsc || 'Not added yet'],
         ],
       },
     ],
@@ -721,7 +727,7 @@ export default function TrainerOnboardingPage() {
     try {
       if (applicationId) {
         await saveTrainerDraftToApi({
-          values: values ?? trainerOnboardingDefaultValues,
+          values,
           currentScreen: currentScreen.id === 'success' ? 'review' : currentScreen.id,
         });
       }
@@ -760,7 +766,7 @@ export default function TrainerOnboardingPage() {
   if (currentScreen.id === 'review') {
     return (
       <TrainerFinalReviewScreen
-        values={values ?? trainerOnboardingDefaultValues}
+        values={values}
         applicationId={applicationId}
         submittedAt={submittedAt}
         savedLabel={formatSavedTime(savedAt)}
@@ -784,13 +790,13 @@ export default function TrainerOnboardingPage() {
   return (
     <TrainerApplicationScreenShell
       screen={currentScreen}
-      prefersReducedMotion={prefersReducedMotion}
+      prefersReducedMotion={prefersReducedMotion ?? undefined}
       direction={direction}
       savedLabel={formatSavedTime(savedAt)}
       draftError={draftError}
       footerLabel={footerLabel}
       loading={isSubmitting || isSavingAndLeaving}
-      footerDisabled={applicationStatus === 'rejected' && currentScreen.id === 'review'}
+      footerDisabled={false}
       viewportMode={viewportMode}
       onBack={moveBack}
       onClose={() => navigate(editMode ? '/trainer/submitted-profile' : submitted ? '/trainer' : '/')}
@@ -800,7 +806,7 @@ export default function TrainerOnboardingPage() {
       {renderCurrentScreen({
         screen: currentScreen,
         form,
-        values: values ?? trainerOnboardingDefaultValues,
+        values,
         reviewSections,
         applicationStatus,
         adminRemarks,
@@ -923,16 +929,16 @@ function TrainerFinalReviewScreen({
     },
   ] as const;
 
-  const qualificationRows = [
+  const qualificationRows: { label: string; value: string; icon: typeof Sparkles; downloadable?: boolean }[] = [
     { label: 'Certification Institute', value: values.certification.institute || 'Not added yet', icon: GraduationCap },
     { label: 'Certification Type', value: values.certification.type || 'Not added yet', icon: ShieldCheck },
     { label: 'Certificate', value: values.certification.certificate?.name || 'Not uploaded yet', icon: FileBadge2, downloadable: Boolean(values.certification.certificate) },
     { label: 'Experience', value: values.experience.yearsExperience ? `${values.experience.yearsExperience} years` : 'Not added yet', icon: Hourglass },
     { label: 'Expertise', value: formatCommaList(values.expertise), icon: Dumbbell },
     { label: 'Clients Trained', value: values.experience.clientsTrained || 'Not added yet', icon: Users },
-  ] as const;
+  ];
 
-  const coachingRows = [
+  const coachingRows: { label: string; value: string; icon: typeof Sparkles; multiline?: boolean; downloadable?: boolean; quiet?: boolean }[] = [
     { label: 'Training Philosophy', value: values.training.philosophy || 'Not added yet', icon: Sparkles, multiline: true },
     { label: 'Training Modes', value: formatCommaList(values.availability.modes), icon: Dumbbell },
     { label: 'Available Days', value: formatCommaList(values.availability.days), icon: CalendarDays, multiline: true },
@@ -945,9 +951,9 @@ function TrainerFinalReviewScreen({
       downloadable: Boolean(values.training.introductionVideo),
       quiet: !values.training.introductionVideo,
     },
-  ] as const;
+  ];
 
-  const verificationRows = [
+  const verificationRows: { label: string; value: string; icon: typeof Sparkles; downloadable?: boolean; quiet?: boolean }[] = [
     { label: 'PAN Card', value: values.identity.pan?.name || 'Not uploaded', icon: CreditCard, downloadable: Boolean(values.identity.pan), quiet: !values.identity.pan },
     { label: 'Aadhaar', value: values.identity.aadhaar?.name || 'Not uploaded', icon: ShieldCheck, downloadable: Boolean(values.identity.aadhaar), quiet: !values.identity.aadhaar },
     { label: 'Passport', value: values.identity.passport?.name || 'Not uploaded', icon: FileCheck2, downloadable: Boolean(values.identity.passport), quiet: !values.identity.passport },
@@ -966,12 +972,12 @@ function TrainerFinalReviewScreen({
     },
     { label: 'Bank Name', value: values.payout.bankName || 'Not added yet', icon: FileBadge2 },
     { label: 'Account Number', value: formatAccountEnding(values.payout.accountNumber), icon: CreditCard },
-  ] as const;
+  ];
 
   return (
     <div className="min-h-dvh overflow-y-auto bg-[radial-gradient(circle_at_top_left,_#ffffff_0%,_#f8f4ff_42%,_#f1ecff_100%)] text-[#090B3F] lg:h-screen lg:overflow-hidden">
       <div className="flex min-h-dvh flex-col bg-[#fcfbff] lg:h-screen lg:overflow-hidden">
-        <header className="shrink-0 border-b border-[#ece7fb] bg-white/82 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 [@media(max-height:760px)]:lg:py-2">
+        <header className="shrink-0 border-b border-[#ece7fb] bg-white/82 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 short:lg:py-2">
           <div className="grid grid-cols-[42px_1fr_42px] items-center gap-3 sm:grid-cols-[46px_1fr_46px]">
             <button
               type="button"
@@ -997,18 +1003,18 @@ function TrainerFinalReviewScreen({
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 lg:overflow-hidden lg:px-5 lg:py-4 [@media(max-height:760px)]:lg:py-3">
-          <div className="min-h-0 flex-1 lg:overflow-hidden">
-            <section className="grid shrink-0 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] [@media(max-height:760px)]:lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="rounded-[20px] border border-[#e8e2fb] bg-white px-4 py-4 shadow-[0_18px_46px_rgba(102,75,212,0.08)] [@media(max-height:760px)]:lg:py-3">
+        <main className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 lg:overflow-hidden lg:px-5 lg:py-4 short:lg:py-3">
+          <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <section className="grid shrink-0 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] short:lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-[20px] border border-[#e8e2fb] bg-white px-4 py-4 shadow-[0_18px_46px_rgba(102,75,212,0.08)] short:lg:py-3">
               <div className="flex items-center gap-5">
-                <UserAvatar user={{ name: fullName }} src={avatarSrc} size="xl" className="h-24 w-24 shrink-0 border-[3px] border-[#e5dbff] text-[1.7rem] tracking-[0.08em] shadow-[0_12px_30px_rgba(123,92,255,0.16)] sm:h-28 sm:w-28 [@media(max-height:760px)]:lg:h-20 [@media(max-height:760px)]:lg:w-20" />
+                <UserAvatar user={{ name: fullName }} src={avatarSrc} size="xl" className="h-24 w-24 shrink-0 border-[3px] border-[#e5dbff] text-[1.7rem] tracking-[0.08em] shadow-[0_12px_30px_rgba(123,92,255,0.16)] sm:h-28 sm:w-28 short:lg:h-20 short:lg:w-20" />
 
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#6345ff]">
                     {hasSubmitted ? 'Submitted Profile' : 'Profile Review'}
                   </p>
-                  <h1 className="mt-1 text-[1.65rem] font-bold uppercase leading-none tracking-[-0.045em] text-[#182062] sm:text-[1.9rem] [@media(max-height:760px)]:lg:text-[1.45rem]">
+                  <h1 className="mt-1 text-[1.65rem] font-bold uppercase leading-none tracking-[-0.045em] text-[#182062] sm:text-[1.9rem] short:lg:text-[1.45rem]">
                     {fullName}
                   </h1>
                   <p className="mt-2 text-[0.95rem] font-medium text-[#586695]">
@@ -1022,14 +1028,14 @@ function TrainerFinalReviewScreen({
               </div>
             </div>
 
-            <div className={cn('rounded-[20px] border px-4 py-4 shadow-[0_18px_46px_rgba(102,75,212,0.08)] [@media(max-height:760px)]:lg:py-3', statusConfig.border, statusConfig.surface)}>
+            <div className={cn('rounded-[20px] border px-4 py-4 shadow-[0_18px_46px_rgba(102,75,212,0.08)] short:lg:py-3', statusConfig.border, statusConfig.surface)}>
               <div className="flex items-start gap-4">
                 <div className={cn('inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/80', statusConfig.tone)}>
                   <statusConfig.Icon size={24} strokeWidth={2} />
                 </div>
                 <div className="min-w-0">
                   <h2 className={cn('text-[1.35rem] font-semibold leading-tight tracking-[-0.03em]', statusConfig.tone)}>{statusConfig.title}</h2>
-                  <p className="mt-2 text-[0.92rem] leading-6 text-[#5b6697] [@media(max-height:760px)]:lg:line-clamp-2">{statusConfig.description}</p>
+                  <p className="mt-2 text-[0.92rem] leading-6 text-[#5b6697] short:lg:line-clamp-2">{statusConfig.description}</p>
                 </div>
               </div>
             </div>
@@ -1123,7 +1129,7 @@ function TrainerFinalReviewScreen({
             </section>
           </div>
 
-          <footer className="mt-3 shrink-0 border-t border-[#ece7fb] pt-3 [@media(max-height:760px)]:lg:pt-2">
+          <footer className="mt-3 shrink-0 border-t border-[#ece7fb] pt-3 short:lg:pt-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[0.96rem] font-medium text-[#6975a6]">Review the details once more, then submit your trainer profile.</p>
@@ -1141,7 +1147,7 @@ function TrainerFinalReviewScreen({
                 type="button"
                 onClick={onPrimaryAction}
                 disabled={loading || disabled}
-                className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] px-8 text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] sm:w-auto sm:min-w-[240px] [@media(max-height:760px)]:lg:h-12"
+                className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] px-8 text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] sm:w-auto sm:min-w-[240px] short:lg:h-12"
               >
                 {loading ? (
                   'Please wait...'
@@ -1324,7 +1330,7 @@ function renderCurrentScreen({
   switch (screen.id) {
     case 'personalInfo':
       return (
-        <div className="space-y-4 [@media(max-height:760px)]:lg:space-y-3">
+        <div className="space-y-4 short:lg:space-y-3">
           <FormInput
             label="Full name"
             placeholder="Enter your full name"
@@ -1358,49 +1364,8 @@ function renderCurrentScreen({
         />
       );
 
-    case 'contact':
-      return (
-        <div className="space-y-3">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormInput
-              label="Email"
-              type="email"
-              placeholder="coach@example.com"
-              inputProps={register('profile.email')}
-              error={findErrorMessage(errors, 'profile.email')}
-            />
-
-            <FormInput
-              label="Mobile number"
-              type="tel"
-              inputMode="tel"
-              placeholder="+91 98765 43210"
-              inputProps={register('profile.mobile')}
-              error={findErrorMessage(errors, 'profile.mobile')}
-            />
-          </div>
-          <p className="text-xs text-slate-500">Use the mobile number where clients and the Aura team can reach you.</p>
-        </div>
-      );
-
     case 'location':
-      return (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            label="City"
-            placeholder="Hyderabad"
-            inputProps={register('profile.city')}
-            error={findErrorMessage(errors, 'profile.city')}
-          />
-
-          <FormInput
-            label="State"
-            placeholder="Telangana"
-            inputProps={register('profile.state')}
-            error={findErrorMessage(errors, 'profile.state')}
-          />
-        </div>
-      );
+      return <LocationAutoDetectFields register={register} control={control} setValue={setValue} errors={errors} />;
 
     case 'photo':
       return (
@@ -1417,7 +1382,7 @@ function renderCurrentScreen({
 
     case 'certification':
       return (
-        <div className="space-y-4 [@media(max-height:760px)]:lg:space-y-3">
+        <div className="space-y-4 short:lg:space-y-3">
           <div className="grid gap-4 sm:grid-cols-2">
             <FormInput
               label="Certification institute"
@@ -1909,87 +1874,157 @@ function renderCurrentScreen({
   }
 }
 
+type TrainerRegistrationScreen = 'mobile' | 'mobileOtp' | 'profile' | 'emailOtp';
+
+const trainerRegistrationHeroCopy: Record<TrainerRegistrationScreen, { title: string; body: string }> = {
+  mobile: {
+    title: 'Start your trainer journey',
+    body: 'Empower lives, build lasting habits, and grow your impact with tools designed for your success.',
+  },
+  mobileOtp: {
+    title: 'Secure your trainer journey',
+    body: 'Confirm your mobile number to unlock the full trainer application and continue building your profile.',
+  },
+  profile: {
+    title: 'Create your trainer account',
+    body: 'Add your name and email, or continue with Google, to set up your secure account.',
+  },
+  emailOtp: {
+    title: 'Verify your email',
+    body: 'Confirm your email address to finish creating your trainer account.',
+  },
+};
+
 function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   const navigate = useNavigate();
   const viewportMode = useTrainerViewportMode();
-  const [screen, setScreen] = useState<'account' | 'otp'>('account');
-  const [accountStep, setAccountStep] = useState<TrainerAccountStep>('name');
+  const [screen, setScreen] = useState<TrainerRegistrationScreen>('mobile');
+  const [profileStep, setProfileStep] = useState<TrainerProfileStep>('name');
+
+  const [mobile, setMobile] = useState('');
+  const [consent, setConsent] = useState(true);
+  const [mobileOtp, setMobileOtp] = useState('');
+  const [mobileChallenge, setMobileChallenge] = useState<TrainerMobileOtpChallenge | null>(null);
+  const [verifiedChallengeToken, setVerifiedChallengeToken] = useState('');
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [mobile, setMobile] = useState('');
-  const [consent, setConsent] = useState(true);
-  const [otp, setOtp] = useState('');
-  const [challenge, setChallenge] = useState<TrainerOtpChallenge | null>(null);
+
+  const [emailOtp, setEmailOtp] = useState('');
+  const [emailChallenge, setEmailChallenge] = useState<TrainerEmailOtpChallenge | null>(null);
+
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [clock, setClock] = useState(Date.now());
 
   useEffect(() => {
-    if (screen !== 'otp') return;
+    if (screen !== 'mobileOtp' && screen !== 'emailOtp') return;
     const interval = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, [screen]);
 
-  const canResend = challenge ? new Date(challenge.resendAvailableAt).getTime() <= clock : false;
-  const resendSeconds = challenge ? Math.max(0, Math.ceil((new Date(challenge.resendAvailableAt).getTime() - clock) / 1000)) : 0;
-  const expired = challenge ? new Date(challenge.expiresAt).getTime() <= clock : false;
-  const isAccountDisabled = !consent || password.length < 8 || !name || !email || !mobile;
-  const accountStepIndex = Math.max(0, trainerAccountSteps.indexOf(accountStep));
-  const hasAccountStepBack = viewportMode.isCompactAccount && screen === 'account' && accountStepIndex > 0;
-  const hasAccountStepNext = viewportMode.isCompactAccount && screen === 'account' && accountStepIndex < trainerAccountSteps.length - 1;
-  // Desktop validates the whole account form; compact screens validate the currently visible field.
-  const isCurrentAccountStepDisabled =
-    accountStep === 'name'
+  async function handleGoogleCredential(idToken: string) {
+    if (!verifiedChallengeToken) return;
+    setLoading(true);
+    setNotice('');
+    try {
+      await registerTrainerWithGoogle({ challengeToken: verifiedChallengeToken, idToken });
+      onCreated();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to continue with Google.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const google = useGoogleIdentity(handleGoogleCredential);
+
+  const activeChallenge = screen === 'emailOtp' ? emailChallenge : mobileChallenge;
+  const canResend = activeChallenge ? new Date(activeChallenge.resendAvailableAt).getTime() <= clock : false;
+  const resendSeconds = activeChallenge ? Math.max(0, Math.ceil((new Date(activeChallenge.resendAvailableAt).getTime() - clock) / 1000)) : 0;
+  const expired = activeChallenge ? new Date(activeChallenge.expiresAt).getTime() <= clock : false;
+
+  const isMobileStepDisabled = !consent || !mobile.trim();
+  const isProfileDisabled = !name.trim() || !email.trim() || password.length < 8;
+  const profileStepIndex = Math.max(0, trainerProfileSteps.indexOf(profileStep));
+  const hasProfileStepBack = viewportMode.isCompactAccount && screen === 'profile' && profileStepIndex > 0;
+  const hasProfileStepNext = viewportMode.isCompactAccount && screen === 'profile' && profileStepIndex < trainerProfileSteps.length - 1;
+  // Desktop validates the whole profile form; compact screens validate the currently visible field.
+  const isCurrentProfileStepDisabled =
+    profileStep === 'name'
       ? !name.trim()
-      : accountStep === 'email'
+      : profileStep === 'email'
         ? !email.trim()
-        : accountStep === 'mobile'
-          ? !mobile.trim()
-          : !consent || password.length < 8;
-  const accountPrimaryLabel = hasAccountStepNext ? 'Continue' : 'Send verification code';
+        : password.length < 8;
+
+  const primaryLabel =
+    screen === 'mobile'
+      ? 'Send verification code'
+      : screen === 'mobileOtp'
+        ? 'Verify mobile number'
+        : screen === 'profile'
+          ? hasProfileStepNext ? 'Continue' : 'Send verification code'
+          : 'Verify & start application';
+
+  const isPrimaryDisabled =
+    screen === 'mobile'
+      ? isMobileStepDisabled
+      : screen === 'mobileOtp'
+        ? mobileOtp.length !== 6 || expired
+        : screen === 'profile'
+          ? (viewportMode.isCompactAccount ? isCurrentProfileStepDisabled : isProfileDisabled)
+          : emailOtp.length !== 6 || expired;
 
   function goBack() {
-    // OTP is a separate screen; compact account fields are sub-steps of the account screen.
-    if (screen === 'otp') {
-      setScreen('account');
+    if (screen === 'emailOtp') {
+      setScreen('profile');
       return;
     }
-    if (hasAccountStepBack) {
-      setAccountStep(trainerAccountSteps[accountStepIndex - 1]);
+    if (screen === 'profile') {
+      if (hasProfileStepBack) {
+        setProfileStep(trainerProfileSteps[profileStepIndex - 1]);
+        return;
+      }
+      setScreen('mobile');
+      return;
+    }
+    if (screen === 'mobileOtp') {
+      setScreen('mobile');
       return;
     }
     navigate('/');
   }
 
-  function handleAccountPrimaryAction() {
-    // Compact screens advance field-by-field before requesting the OTP.
-    if (screen === 'otp') {
-      void verifyOtp();
+  function handlePrimaryAction() {
+    if (screen === 'mobile') {
+      void sendMobileOtp();
       return;
     }
-    if (hasAccountStepNext) {
-      setAccountStep(trainerAccountSteps[accountStepIndex + 1]);
+    if (screen === 'mobileOtp') {
+      void verifyMobileOtpAndContinue();
       return;
     }
-    void sendOtp();
+    if (screen === 'profile') {
+      if (hasProfileStepNext) {
+        setProfileStep(trainerProfileSteps[profileStepIndex + 1]);
+        return;
+      }
+      void submitProfile();
+      return;
+    }
+    void verifyEmailOtpAndFinish();
   }
 
-  async function sendOtp() {
+  async function sendMobileOtp() {
     setLoading(true);
     setNotice('');
     try {
-      const nextChallenge = await requestTrainerRegistrationOtp({
-        name,
-        email,
-        password,
-        mobile,
-        consent_to_terms: consent,
-      });
-      setChallenge(nextChallenge);
-      setOtp('');
-      setScreen('otp');
+      const nextChallenge = await requestTrainerMobileOtp({ mobile, consent_to_terms: consent });
+      setMobileChallenge(nextChallenge);
+      setMobileOtp('');
+      setScreen('mobileOtp');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Unable to send a verification code.');
     } finally {
@@ -1997,13 +2032,15 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  async function verifyOtp() {
-    if (!challenge) return;
+  async function verifyMobileOtpAndContinue() {
+    if (!mobileChallenge) return;
     setLoading(true);
     setNotice('');
     try {
-      await verifyTrainerRegistrationOtp({ challengeToken: challenge.challengeToken, otp });
-      onCreated();
+      const result = await verifyTrainerMobileOtp({ challengeToken: mobileChallenge.challengeToken, otp: mobileOtp });
+      setVerifiedChallengeToken(result.challengeToken);
+      setProfileStep('name');
+      setScreen('profile');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Unable to verify your mobile number.');
     } finally {
@@ -2011,14 +2048,60 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  async function resendOtp() {
-    if (!challenge) return;
+  async function resendMobileOtp() {
+    if (!mobileChallenge) return;
     setLoading(true);
     setNotice('');
     try {
-      const nextChallenge = await resendTrainerRegistrationOtp(challenge.challengeToken);
-      setChallenge(nextChallenge);
-      setOtp('');
+      const nextChallenge = await resendTrainerMobileOtp(mobileChallenge.challengeToken);
+      setMobileChallenge(nextChallenge);
+      setMobileOtp('');
+      setClock(Date.now());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to resend a verification code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitProfile() {
+    if (!verifiedChallengeToken) return;
+    setLoading(true);
+    setNotice('');
+    try {
+      const nextChallenge = await requestTrainerEmailOtp({ challengeToken: verifiedChallengeToken, name, email, password });
+      setEmailChallenge(nextChallenge);
+      setEmailOtp('');
+      setScreen('emailOtp');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to send a verification code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function verifyEmailOtpAndFinish() {
+    if (!verifiedChallengeToken) return;
+    setLoading(true);
+    setNotice('');
+    try {
+      await verifyTrainerEmailOtp({ challengeToken: verifiedChallengeToken, otp: emailOtp });
+      onCreated();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to verify your email address.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendEmailOtp() {
+    if (!verifiedChallengeToken) return;
+    setLoading(true);
+    setNotice('');
+    try {
+      const nextChallenge = await resendTrainerEmailOtp(verifiedChallengeToken);
+      setEmailChallenge(nextChallenge);
+      setEmailOtp('');
       setClock(Date.now());
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Unable to resend a verification code.');
@@ -2033,7 +2116,7 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
         className="flex min-h-dvh flex-col bg-white lg:h-screen lg:overflow-hidden"
         style={{ background: trainerEntryShellBackground }}
       >
-        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 [@media(max-height:760px)]:lg:py-2">
+        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 short:lg:py-2 z-10">
           <div className="grid grid-cols-[42px_1fr_42px] items-center gap-3 sm:grid-cols-[46px_1fr_46px]">
             <button
               type="button"
@@ -2059,14 +2142,14 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[0.94fr_1.06fr] xl:grid-cols-[1fr_1fr]">
+        <div className="grid min-h-0 flex-1 lg:auto-rows-fr lg:grid-cols-2">
           {/* Keep the desktop illustration in a fixed-height band so it cannot clip under the header. */}
           <section
-            className="relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 [@media(max-height:700px)]:h-[28dvh] [@media(max-height:700px)]:min-h-[185px] [@media(max-height:760px)]:lg:py-3"
+            className='mt-1 lg:mt-20'
             style={{ background: trainerEntryHeroBackground }}
           >
-            <div className="relative mx-auto flex h-full w-full max-w-[720px] flex-col justify-center lg:justify-start">
-              <div className="relative mx-auto flex w-full max-w-[620px] items-center justify-center lg:h-[300px] xl:h-[360px] [@media(max-height:760px)]:lg:h-[250px]">
+            <div className="relative mx-auto flex h-full w-full max-w-[720px] flex-col justify-center" style={{ zIndex: 0 }}>
+              <div className="relative mx-auto flex w-full max-w-[620px] items-center justify-center lg:h-[300px] xl:h-[360px] short:lg:h-[250px]">
                 <div className="pointer-events-none absolute left-[10%] top-[20%] hidden h-48 w-48 rounded-full bg-[radial-gradient(circle,_rgba(182,161,255,0.25)_0%,_rgba(182,161,255,0)_72%)] blur-xl lg:block" />
                 <div className="pointer-events-none absolute right-[8%] top-[10%] hidden h-40 w-40 rounded-full bg-[radial-gradient(circle,_rgba(255,255,255,0.95)_0%,_rgba(255,255,255,0)_72%)] blur-xl lg:block" />
 
@@ -2074,39 +2157,22 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                   <img
                     src={trainerOnboardingIllustration}
                     alt="Personal trainer onboarding illustration"
-                    className="relative z-10 mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full [@media(max-height:700px)]:max-h-[13dvh]"
                   />
 
-                  <TrainerEntryHeroBadge
-                    className="left-[6%] top-[34%] hidden lg:left-[10%] lg:top-[27%] lg:flex"
-                    icon={BarChart3}
-                    label="Analytics"
-                  />
-                  <TrainerEntryHeroBadge
-                    className="right-[10%] top-[28%] hidden lg:right-[12%] lg:top-[22%] lg:flex"
-                    icon={Heart}
-                    label="Care"
-                  />
-                  <TrainerEntryHeroBadge
-                    className="right-[2%] top-[50%] hidden lg:right-[6%] lg:top-[44%] lg:flex"
-                    icon={CircleUserRound}
-                    label="Profile"
-                  />
+                 
                 </div>
               </div>
 
-              <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-1 lg:mt-2 [@media(max-height:760px)]:lg:mt-1">
-                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] [@media(max-height:760px)]:lg:text-[1.55rem]">
-                  {screen === 'account' ? 'Start your trainer journey' : 'Secure your trainer journey'}
+              <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-1 lg:mt-2 short:lg:mt-1">
+                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] short:lg:text-[1.55rem]">
+                  {trainerRegistrationHeroCopy[screen].title}
                 </h2>
-                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] [@media(max-height:760px)]:lg:line-clamp-2">
-                  {screen === 'account'
-                    ? 'Empower lives, build lasting habits, and grow your impact with tools designed for your success.'
-                    : 'Confirm your mobile number to unlock the full trainer application and continue building your profile.'}
+                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] short:lg:line-clamp-2">
+                  {trainerRegistrationHeroCopy[screen].body}
                 </p>
               </div>
 
-              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 [@media(max-height:760px)]:lg:mt-2">
+              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-5">
                 {trainerEntryHighlights.map(({ title, description, icon: Icon }) => (
                   <div
                     key={title}
@@ -2125,10 +2191,10 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
             </div>
           </section>
 
-          <section className="flex min-h-0 items-start px-4 py-4 sm:px-6 lg:items-center lg:overflow-hidden lg:px-8 lg:py-4 xl:px-12 [@media(max-height:760px)]:lg:py-3">
+          <section className="flex min-h-0 items-start px-4 py-4 sm:px-6 lg:items-center lg:overflow-hidden lg:px-8 lg:py-4 xl:px-12 short:lg:py-3">
             <div
               className="mx-auto flex w-full max-w-[680px] flex-col justify-center lg:h-full"
-              style={{ background: trainerEntryPanelBackground }}
+              
             >
               <AnimatePresence mode="wait" initial={false}>
                 <motion.section
@@ -2138,115 +2204,50 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                   exit={{ opacity: 0, x: -18 }}
                   transition={{ duration: 0.25 }}
                 >
-                  {screen === 'account' ? (
+                  {screen === 'mobile' ? (
                     <>
-                      <div className="space-y-2 sm:space-y-3">
+                      <div className="space-y-2 sm:space-y-3 hidden lg:block">
                         <p className="text-[0.68rem] font-bold uppercase tracking-[0.17em] text-[#6345ff] sm:text-xs sm:tracking-[0.22em]">Personal trainer application</p>
-                        <h1 className="text-[1.45rem] font-bold leading-[1.03] tracking-[-0.03em] text-[#12186d] sm:text-[2.25rem] sm:tracking-[-0.045em] xl:text-[2.55rem] [@media(max-height:760px)]:lg:text-[2.15rem]">
-                          Create your trainer account
+                        <h1 className="text-[1.45rem] font-bold leading-[1.03] tracking-[-0.03em] text-[#12186d] sm:text-[2.25rem] sm:tracking-[-0.045em] xl:text-[2.55rem] short:lg:text-[2.15rem]">
+                          What&apos;s your mobile number?
                         </h1>
-                        <p className="max-w-[540px] text-[0.82rem] font-medium leading-5 text-[#5b6697] sm:text-[1rem] sm:leading-6 [@media(max-height:760px)]:lg:line-clamp-2">
-                          Set up your secure account before building your professional profile.
+                        <p className="max-w-[540px] text-[0.82rem] font-medium leading-5 text-[#5b6697] sm:text-[1rem] sm:leading-6 short:lg:line-clamp-2">
+                          We&apos;ll text you a verification code to confirm it&apos;s really you.
                         </p>
                       </div>
 
-                      <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-3.5 [@media(max-height:760px)]:lg:mt-4 [@media(max-height:760px)]:lg:space-y-3">
-                        {viewportMode.isCompactAccount ? (
-                          // Progress bars map to name, email, mobile, and password/consent micro-steps.
-                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#7d6bd4]">
-                            {trainerAccountSteps.map((step) => (
-                              <span
-                                key={step}
-                                className={cn(
-                                  'h-1.5 flex-1 rounded-full bg-[#e5ddff]',
-                                  step === accountStep && 'bg-[#7654ff]',
-                                  trainerAccountSteps.indexOf(step) < accountStepIndex && 'bg-[#a58cff]',
-                                )}
-                              />
-                            ))}
-                          </div>
-                        ) : null}
+                      <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-3.5 short:lg:mt-4 short:lg:space-y-3">
+                        <FormInput
+                          label="Mobile number"
+                          type="tel"
+                          inputMode="tel"
+                          placeholder="+91 98765 43210"
+                          value={mobile}
+                          onChange={(event) => setMobile(event.target.value)}
+                          icon={<Phone className="h-5 w-5" strokeWidth={2.05} />}
+                          inputProps={{ autoComplete: 'tel' }}
+                        />
 
-                        {(!viewportMode.isCompactAccount || accountStep === 'name') ? (
-                          <FormInput
-                            label="Full name"
-                            placeholder="Your full name"
-                            value={name}
-                            onChange={(event) => setName(event.target.value)}
-                            icon={<UserRound className="h-5 w-5" strokeWidth={2.05} />}
-                            inputProps={{ autoComplete: 'name' }}
-                          />
-                        ) : null}
-
-                        {(!viewportMode.isCompactAccount || accountStep === 'email') ? (
-                          <FormInput
-                            label="Email"
-                            type="email"
-                            placeholder="you@example.com"
-                            value={email}
-                            onChange={(event) => setEmail(event.target.value)}
-                            icon={<Mail className="h-5 w-5" strokeWidth={2.05} />}
-                            inputProps={{ autoComplete: 'email' }}
-                          />
-                        ) : null}
-
-                        {(!viewportMode.isCompactAccount || accountStep === 'mobile') ? (
-                          <FormInput
-                            label="Mobile number"
-                            type="tel"
-                            inputMode="tel"
-                            placeholder="+91 98765 43210"
-                            value={mobile}
-                            onChange={(event) => setMobile(event.target.value)}
-                            icon={<Phone className="h-5 w-5" strokeWidth={2.05} />}
-                            inputProps={{ autoComplete: 'tel' }}
-                          />
-                        ) : null}
-
-                        {(!viewportMode.isCompactAccount || accountStep === 'password') ? (
-                          <>
-                            <FormInput
-                              label="Password"
-                              type={showPassword ? 'text' : 'password'}
-                              placeholder="Minimum 8 characters"
-                              value={password}
-                              onChange={(event) => setPassword(event.target.value)}
-                              icon={<LockKeyhole className="h-5 w-5" strokeWidth={2.05} />}
-                              inputProps={{ autoComplete: 'new-password' }}
-                              trailing={
-                                <button
-                                  type="button"
-                                  onClick={() => setShowPassword((value) => !value)}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#6f63b7] transition hover:bg-[#f3efff] hover:text-[#4c2cff]"
-                                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                >
-                                  {showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
-                                </button>
-                              }
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() => setConsent((value) => !value)}
-                              className="inline-flex items-start gap-3 text-left text-[0.95rem] text-[#566497]"
-                            >
-                              <span className="pt-0.5 text-[#7b5cff]">
-                                {consent ? <SquareCheck className="h-5 w-5" strokeWidth={2} /> : <Square className="h-5 w-5" strokeWidth={2} />}
-                              </span>
-                              <span>
-                                I agree to the{' '}
-                                <Link to="/terms-of-service" className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0]">
-                                  terms
-                                </Link>{' '}
-                                and{' '}
-                                <Link to="/privacy-policy" className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0]">
-                                  privacy policy
-                                </Link>
-                                .
-                              </span>
-                            </button>
-                          </>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setConsent((value) => !value)}
+                          className="inline-flex items-start gap-3 text-left text-[0.95rem] text-[#566497]"
+                        >
+                          <span className="pt-0.5 text-[#7b5cff]">
+                            {consent ? <SquareCheck className="h-5 w-5" strokeWidth={2} /> : <Square className="h-5 w-5" strokeWidth={2} />}
+                          </span>
+                          <span>
+                            I agree to the{' '}
+                            <Link to="/terms-of-service" className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0]">
+                              terms
+                            </Link>{' '}
+                            and{' '}
+                            <Link to="/privacy-policy" className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0]">
+                              privacy policy
+                            </Link>
+                            .
+                          </span>
+                        </button>
 
                         <p className="text-[0.88rem] text-[#566497] sm:text-[0.98rem]">
                           Already started?{' '}
@@ -2256,7 +2257,7 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                         </p>
                       </div>
                     </>
-                  ) : (
+                  ) : screen === 'mobileOtp' ? (
                     <>
                       <div className="space-y-3 text-center">
                         <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6345ff]">Mobile verification</p>
@@ -2264,15 +2265,15 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                           Enter verification code
                         </h1>
                         <p className="mx-auto max-w-[460px] text-[1rem] font-medium leading-7 text-[#5b6697] sm:text-[1.06rem]">
-                          We sent a 6-digit code to <span className="font-semibold text-[#182062]">{challenge?.maskedMobile}</span>.
+                          We sent a 6-digit code to <span className="font-semibold text-[#182062]">{mobileChallenge?.maskedMobile}</span>.
                         </p>
                       </div>
 
                       <div className="mt-8 space-y-6">
                         <InputOTP
                           maxLength={6}
-                          value={otp}
-                          onChange={(value) => setOtp(value.replace(/\D/g, ''))}
+                          value={mobileOtp}
+                          onChange={(value) => setMobileOtp(value.replace(/\D/g, ''))}
                           inputMode="numeric"
                           containerClassName="justify-center"
                         >
@@ -2291,7 +2292,7 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                           <button
                             type="button"
                             onClick={() => {
-                              setScreen('account');
+                              setScreen('mobile');
                               setNotice('');
                             }}
                             className="font-semibold text-[#6b7298] transition hover:text-[#182062]"
@@ -2300,7 +2301,156 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void resendOtp()}
+                            onClick={() => void resendMobileOtp()}
+                            disabled={!canResend || loading || expired}
+                            className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0] disabled:text-slate-400"
+                          >
+                            {canResend ? 'Resend code' : `Resend in ${resendSeconds}s`}
+                          </button>
+                        </div>
+
+                        {expired ? <p className="text-center text-sm text-rose-600">This code has expired. Return and request a new code.</p> : null}
+                      </div>
+                    </>
+                  ) : screen === 'profile' ? (
+                    <>
+                      <div className="space-y-2 sm:space-y-3 hidden lg:block">
+                        <p className="text-[0.68rem] font-bold uppercase tracking-[0.17em] text-[#6345ff] sm:text-xs sm:tracking-[0.22em]">Personal trainer application</p>
+                        <h1 className="text-[1.45rem] font-bold leading-[1.03] tracking-[-0.03em] text-[#12186d] sm:text-[2.25rem] sm:tracking-[-0.045em] xl:text-[2.55rem] short:lg:text-[2.15rem]">
+                          Create your trainer account
+                        </h1>
+                        <p className="max-w-[540px] text-[0.82rem] font-medium leading-5 text-[#5b6697] sm:text-[1rem] sm:leading-6 short:lg:line-clamp-2">
+                          Set up your secure account before building your professional profile.
+                        </p>
+                      </div>
+
+                      <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-3.5 short:lg:mt-4 short:lg:space-y-3">
+                        {viewportMode.isCompactAccount ? (
+                          // Progress bars map to name, email, and password micro-steps.
+                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#7d6bd4]">
+                            {trainerProfileSteps.map((step) => (
+                              <span
+                                key={step}
+                                className={cn(
+                                  'h-1.5 flex-1 rounded-full bg-[#e5ddff]',
+                                  step === profileStep && 'bg-[#7654ff]',
+                                  trainerProfileSteps.indexOf(step) < profileStepIndex && 'bg-[#a58cff]',
+                                )}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {(!viewportMode.isCompactAccount || profileStep === 'name') ? (
+                          <FormInput
+                            label="Full name"
+                            placeholder="Your full name"
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
+                            icon={<UserRound className="h-5 w-5" strokeWidth={2.05} />}
+                            inputProps={{ autoComplete: 'name' }}
+                          />
+                        ) : null}
+
+                        {(!viewportMode.isCompactAccount || profileStep === 'email') ? (
+                          <FormInput
+                            label="Email"
+                            type="email"
+                            placeholder="you@example.com"
+                            value={email}
+                            onChange={(event) => setEmail(event.target.value)}
+                            icon={<Mail className="h-5 w-5" strokeWidth={2.05} />}
+                            inputProps={{ autoComplete: 'email' }}
+                          />
+                        ) : null}
+
+                        {(!viewportMode.isCompactAccount || profileStep === 'password') ? (
+                          <FormInput
+                            label="Password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Minimum 8 characters"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            icon={<LockKeyhole className="h-5 w-5" strokeWidth={2.05} />}
+                            inputProps={{ autoComplete: 'new-password' }}
+                            trailing={
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword((value) => !value)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#6f63b7] transition hover:bg-[#f3efff] hover:text-[#4c2cff]"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
+                              </button>
+                            }
+                          />
+                        ) : null}
+
+                        <div className="flex items-center gap-4 pt-0.5">
+                          <span className="h-px flex-1 bg-[#e4ddf8]" />
+                          <span className="text-xs font-semibold tracking-[0.12em] text-[#6675aa]">OR</span>
+                          <span className="h-px flex-1 bg-[#e4ddf8]" />
+                        </div>
+
+                        {google.isConfigured ? (
+                          <div ref={google.buttonRef} className="flex justify-center" />
+                        ) : (
+                          <p className="text-center text-xs font-medium text-[#9aa3c2]">Google sign-in isn&apos;t configured yet.</p>
+                        )}
+
+                        <p className="text-[0.88rem] text-[#566497] sm:text-[0.98rem]">
+                          Already started?{' '}
+                          <Link to="/login" className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0]">
+                            Sign in to continue
+                          </Link>
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-3 text-center">
+                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6345ff]">Email verification</p>
+                        <h1 className="text-[1.9rem] font-bold leading-[1.03] tracking-[-0.04em] text-[#12186d] sm:text-[2.35rem] xl:text-[2.55rem]">
+                          Enter verification code
+                        </h1>
+                        <p className="mx-auto max-w-[460px] text-[1rem] font-medium leading-7 text-[#5b6697] sm:text-[1.06rem]">
+                          We sent a 6-digit code to <span className="font-semibold text-[#182062]">{emailChallenge?.maskedEmail}</span>.
+                        </p>
+                      </div>
+
+                      <div className="mt-8 space-y-6">
+                        <InputOTP
+                          maxLength={6}
+                          value={emailOtp}
+                          onChange={(value) => setEmailOtp(value.replace(/\D/g, ''))}
+                          inputMode="numeric"
+                          containerClassName="justify-center"
+                        >
+                          <InputOTPGroup className="gap-2 sm:gap-3">
+                            {[0, 1, 2, 3, 4, 5].map((index) => (
+                              <InputOTPSlot
+                                key={index}
+                                index={index}
+                                className="h-14 w-11 rounded-2xl border border-[#d8d9ee] bg-white text-xl text-[#151a5f] shadow-[0_10px_22px_rgba(123,92,255,0.08)] sm:h-16 sm:w-12"
+                              />
+                            ))}
+                          </InputOTPGroup>
+                        </InputOTP>
+
+                        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-sm">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScreen('profile');
+                              setNotice('');
+                            }}
+                            className="font-semibold text-[#6b7298] transition hover:text-[#182062]"
+                          >
+                            Change email
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void resendEmailOtp()}
                             disabled={!canResend || loading || expired}
                             className="font-semibold text-[#5a32ff] transition hover:text-[#4018e0] disabled:text-slate-400"
                           >
@@ -2319,18 +2469,18 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                     </p>
                   ) : null}
 
-                  <div className="mt-4 sm:mt-5 [@media(max-height:760px)]:lg:mt-4">
+                  <div className="mt-4 sm:mt-5 short:lg:mt-4">
                     <Button
                       type="button"
-                      onClick={handleAccountPrimaryAction}
-                      disabled={loading || (screen === 'account' ? (viewportMode.isCompactAccount ? isCurrentAccountStepDisabled : isAccountDisabled) : otp.length !== 6 || expired)}
-                      className="h-12 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[0.98rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] sm:h-14 sm:text-[1.02rem] [@media(max-height:760px)]:lg:h-12"
+                      onClick={handlePrimaryAction}
+                      disabled={loading || isPrimaryDisabled}
+                      className="h-12 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[0.98rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] sm:h-14 sm:text-[1.02rem] short:lg:h-12"
                     >
                       {loading ? (
                         'Please wait...'
                       ) : (
                         <span className="inline-flex items-center gap-3">
-                          {screen === 'account' ? accountPrimaryLabel : 'Verify & start application'}
+                          {primaryLabel}
                           <ArrowRight size={19} />
                         </span>
                       )}
@@ -2374,7 +2524,7 @@ function TrainerWelcomeScreen({
   return (
     <div className="min-h-dvh overflow-y-auto bg-[radial-gradient(circle_at_top_left,_#ffffff_0%,_#f8f4ff_42%,_#f1ecff_100%)] text-[#090B3F] lg:h-screen lg:overflow-hidden">
       <div className="flex min-h-dvh flex-col bg-white lg:h-screen lg:overflow-hidden" style={{ background: trainerEntryShellBackground }}>
-        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 [@media(max-height:760px)]:lg:py-2">
+        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 short:lg:py-2">
           <div className="grid grid-cols-[42px_1fr_42px] items-center gap-3 sm:grid-cols-[46px_1fr_46px]">
             <button
               type="button"
@@ -2400,31 +2550,31 @@ function TrainerWelcomeScreen({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[0.94fr_1.06fr] xl:grid-cols-[1fr_1fr]">
+        <div className="grid min-h-0 flex-1 lg:auto-rows-fr lg:grid-cols-2">
           {/* Same hero sizing contract as the public account screen: image first, compact copy below. */}
           <section
-            className="relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 [@media(max-height:700px)]:h-[28dvh] [@media(max-height:700px)]:min-h-[185px] [@media(max-height:760px)]:lg:py-3"
+            className="relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 shorter:h-[28dvh] shorter:min-h-[185px] short:lg:py-3"
             style={{ background: trainerEntryHeroBackground }}
           >
-            <div className="relative mx-auto flex h-full w-full max-w-[720px] flex-col justify-center lg:justify-start">
-              <div className="relative mx-auto flex w-full max-w-[620px] items-center justify-center lg:h-[300px] xl:h-[360px] [@media(max-height:760px)]:lg:h-[250px]">
+            <div className="relative mx-auto flex h-full w-full max-w-[720px] flex-col justify-center">
+              <div className="relative mx-auto flex w-full max-w-[620px] items-center justify-center lg:h-[300px] xl:h-[360px] short:lg:h-[250px]">
                 <img
                   src={trainerWelcomeIllustration}
                   alt="Trainer onboarding welcome illustration"
-                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full [@media(max-height:700px)]:max-h-[13dvh]"
+                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full shorter:max-h-[13dvh]"
                 />
               </div>
 
               <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-2">
-                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] [@media(max-height:760px)]:lg:text-[1.55rem]">
+                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] short:lg:text-[1.55rem]">
                   Let&apos;s begin your trainer journey
                 </h2>
-                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] [@media(max-height:760px)]:lg:line-clamp-2">
+                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] short:lg:line-clamp-2">
                   Create a polished and trustworthy profile that helps clients know who you are and how you can help.
                 </p>
               </div>
 
-              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 [@media(max-height:760px)]:lg:mt-2">
+              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2">
                 {trainerWelcomeHighlights.map(({ title, description, icon: Icon }) => (
                   <div
                     key={title}
@@ -2443,7 +2593,7 @@ function TrainerWelcomeScreen({
             </div>
           </section>
 
-          <section className="flex min-h-0 items-start px-4 py-4 sm:px-6 lg:items-center lg:overflow-hidden lg:px-8 lg:py-4 xl:px-12 [@media(max-height:760px)]:lg:py-3">
+          <section className="flex min-h-0 items-start px-4 py-4 sm:px-6 lg:items-center lg:overflow-hidden lg:px-8 lg:py-4 xl:px-12 short:lg:py-3">
             <div className="mx-auto flex w-full max-w-[680px] flex-col justify-center lg:h-full">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.section
@@ -2455,16 +2605,16 @@ function TrainerWelcomeScreen({
                 >
                   <div className="space-y-3">
                     <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6345ff]">Welcome</p>
-                    <h1 className="text-[1.85rem] font-bold leading-[1.03] tracking-[-0.045em] text-[#12186d] sm:text-[2.25rem] xl:text-[2.55rem] [@media(max-height:760px)]:lg:text-[2.15rem]">
+                    <h1 className="text-[1.85rem] font-bold leading-[1.03] tracking-[-0.045em] text-[#12186d] sm:text-[2.25rem] xl:text-[2.55rem] short:lg:text-[2.15rem]">
                       Let&apos;s get started
                     </h1>
-                    <p className="max-w-[560px] text-[0.94rem] font-medium leading-6 text-[#5b6697] sm:text-[1rem] [@media(max-height:760px)]:lg:line-clamp-2">
+                    <p className="max-w-[560px] text-[0.94rem] font-medium leading-6 text-[#5b6697] sm:text-[1rem] short:lg:line-clamp-2">
                       We&apos;ll help you create a trainer profile that feels polished, trustworthy, and easy for clients to understand.
                     </p>
                     <p className="text-[0.98rem] font-medium text-[#5b6697]">Two quick details to begin.</p>
                   </div>
 
-                  <div className="mt-5 space-y-4 [@media(max-height:760px)]:lg:mt-4 [@media(max-height:760px)]:lg:space-y-3">
+                  <div className="mt-5 space-y-4 short:lg:mt-4 short:lg:space-y-3">
                     <FormInput
                       label="Full name"
                       placeholder="Enter your full name"
@@ -2503,12 +2653,12 @@ function TrainerWelcomeScreen({
                     </p>
                   ) : null}
 
-                  <div className="mt-5 [@media(max-height:760px)]:lg:mt-4">
+                  <div className="mt-5 short:lg:mt-4">
                     <Button
                       type="button"
                       onClick={onPrimaryAction}
                       disabled={loading}
-                      className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] [@media(max-height:760px)]:lg:h-12"
+                      className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] short:lg:h-12"
                     >
                       {loading ? (
                         'Please wait...'
@@ -2575,7 +2725,7 @@ function TrainerApplicationScreenShell({
   return (
     <div className="min-h-dvh overflow-y-auto bg-[radial-gradient(circle_at_top_left,_#ffffff_0%,_#f8f4ff_42%,_#f1ecff_100%)] text-[#090B3F] lg:h-screen lg:overflow-hidden">
       <div className="flex min-h-dvh flex-col bg-white lg:h-screen lg:overflow-hidden" style={{ background: trainerEntryShellBackground }}>
-        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 [@media(max-height:760px)]:lg:py-2">
+        <header className="shrink-0 border-b border-[#ece7fb] bg-white/72 px-3 py-2.5 backdrop-blur-xl sm:px-5 lg:px-7 lg:py-3 short:lg:py-2">
           <div className="grid grid-cols-[42px_1fr_42px] items-center gap-3 sm:grid-cols-[46px_1fr_46px]">
             <button
               type="button"
@@ -2603,36 +2753,32 @@ function TrainerApplicationScreenShell({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[0.9fr_1.1fr] xl:grid-cols-[0.96fr_1.04fr]">
+        <div className="grid min-h-0 flex-1 lg:auto-rows-fr lg:grid-cols-2">
           {/* Authenticated steps reuse the visual rail, but the right side owns all form progression. */}
           <section
-            className={cn(
-              'relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 [@media(max-height:700px)]:h-[28dvh] [@media(max-height:700px)]:min-h-[185px] [@media(max-height:760px)]:lg:py-3',
-              viewportMode.isShort && 'lg:px-4',
-            )}
-            style={{ background: trainerEntryHeroBackground }}
+           
           >
-            <div className="relative mx-auto flex h-full w-full max-w-[700px] flex-col justify-center lg:justify-start">
-              <div className="relative mx-auto flex w-full max-w-[600px] items-center justify-center lg:h-[280px] xl:h-[340px] [@media(max-height:760px)]:lg:h-[230px]">
+            <div className="relative mx-auto flex h-full w-full max-w-[700px] flex-col justify-center">
+              <div className="relative mx-auto flex w-full max-w-[600px] items-center justify-center lg:h-[280px] xl:h-[340px] short:lg:h-[230px]">
                 <img
                   src={trainerWelcomeIllustration}
                   alt="Trainer onboarding illustration"
-                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full [@media(max-height:700px)]:max-h-[13dvh]"
+                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full shorter:max-h-[13dvh]"
                 />
               </div>
 
               <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-2">
-                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.55rem] xl:text-[2.1rem] [@media(max-height:760px)]:lg:text-[1.45rem]">
+                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.55rem] xl:text-[2.1rem] short:lg:text-[1.45rem]">
                   {screen.id === 'success' ? 'Your trainer application is in' : "Let's build your trainer profile"}
                 </h2>
-                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.88rem] xl:text-[0.96rem] [@media(max-height:760px)]:lg:line-clamp-2">
+                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.88rem] xl:text-[0.96rem] short:lg:line-clamp-2">
                   {screen.id === 'success'
                     ? 'You&apos;re all set. Our team will review your details and guide you through the next step shortly.'
                     : 'Complete each step to create a polished and trustworthy profile clients can understand quickly.'}
                 </p>
               </div>
 
-              <div className="mx-auto mt-3 hidden w-full max-w-[700px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 [@media(max-height:760px)]:lg:mt-2">
+              <div className="mx-auto mt-3 hidden w-full max-w-[700px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2">
                 {trainerWelcomeHighlights.map(({ title, description, icon: Icon }) => (
                   <div
                     key={title}
@@ -2651,9 +2797,9 @@ function TrainerApplicationScreenShell({
             </div>
           </section>
 
-          <section className="flex min-h-0 px-4 py-4 sm:px-6 lg:overflow-hidden lg:px-7 lg:py-4 xl:px-10 [@media(max-height:760px)]:lg:py-3">
+          <section className="flex min-h-0 px-4 py-4 sm:px-6 lg:overflow-hidden lg:px-7 lg:py-4 xl:px-10 short:lg:py-3">
             <div className="mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col">
-              <div className="min-h-0 flex-1 pr-0 lg:overflow-hidden">
+              <div className="min-h-0 flex-1 pr-0 lg:overflow-y-auto lg:pr-1 [scrollbar-gutter:stable] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <AnimatePresence custom={direction} initial={false} mode="wait">
                   <motion.section
                     key={screen.id}
@@ -2670,7 +2816,7 @@ function TrainerApplicationScreenShell({
               </div>
 
               {screen.id !== 'success' ? (
-                <div className="shrink-0 pt-3 [@media(max-height:760px)]:lg:pt-2">
+                <div className="shrink-0 pt-3 short:lg:pt-2">
                   <div className="flex items-center gap-4">
                     <div className="h-px flex-1 bg-[#ddd5f6]" />
                     <div className="inline-flex items-center gap-2 text-[0.92rem] font-medium text-[#7582b3]">
@@ -2686,12 +2832,12 @@ function TrainerApplicationScreenShell({
                     </p>
                   ) : null}
 
-                  <div className="mt-3 [@media(max-height:760px)]:lg:mt-2">
+                  <div className="mt-3 short:lg:mt-2">
                     <Button
                       type="button"
                       onClick={onPrimaryAction}
                       disabled={loading || footerDisabled}
-                      className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] [@media(max-height:760px)]:lg:h-12"
+                      className="h-14 w-full rounded-[18px] bg-[linear-gradient(90deg,#5b2dff_0%,#7a43ff_100%)] text-[1.02rem] font-semibold text-white shadow-[0_20px_40px_rgba(91,45,255,0.28)] transition hover:brightness-[1.03] short:lg:h-12"
                     >
                       {loading ? (
                         'Please wait...'
@@ -2704,7 +2850,7 @@ function TrainerApplicationScreenShell({
                     </Button>
                   </div>
 
-                  <div className="mt-3 text-center [@media(max-height:760px)]:lg:mt-2">
+                  <div className="mt-3 text-center short:lg:mt-2">
                     <button
                       type="button"
                       onClick={onSaveAndLogout}
@@ -2857,15 +3003,15 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 function QuestionScreen({ screen, children }: { screen: TrainerOnboardingScreen; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-0 flex-col px-0 py-2 sm:py-3 lg:h-full [@media(max-height:760px)]:lg:py-1">
-      <div className="space-y-2 [@media(max-height:760px)]:lg:space-y-1.5">
+    <div className="flex min-h-0 flex-col px-0 py-2 sm:py-3 lg:h-full short:lg:py-1">
+      <div className="space-y-2 short:lg:space-y-1.5">
         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[var(--ds-brand)]">{screen.eyebrow}</p>
-        <h1 className="text-[1.7rem] font-semibold leading-tight text-slate-950 sm:text-[1.95rem] xl:text-[2.1rem] [@media(max-height:760px)]:lg:text-[1.65rem]">{screen.title}</h1>
-        <p className="text-sm leading-6 text-slate-600 [@media(max-height:760px)]:lg:line-clamp-2">{screen.description}</p>
+        <h1 className="text-[1.7rem] font-semibold leading-tight text-slate-950 sm:text-[1.95rem] xl:text-[2.1rem] short:lg:text-[1.65rem]">{screen.title}</h1>
+        <p className="text-sm leading-6 text-slate-600 short:lg:line-clamp-2">{screen.description}</p>
         <p className="text-xs font-medium text-slate-500">{screen.helper}</p>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 [@media(max-height:760px)]:lg:mt-3">{children}</div>
+      <div className="mt-4 min-h-0 flex-1 short:lg:mt-3">{children}</div>
     </div>
   );
 }
@@ -2908,6 +3054,127 @@ function OnboardingFooter({
   );
 }
 
+function LocationAutoDetectFields({
+  register,
+  control,
+  setValue,
+  errors,
+}: {
+  register: ReturnType<typeof useForm<TrainerOnboardingFormValues>>['register'];
+  control: ReturnType<typeof useForm<TrainerOnboardingFormValues>>['control'];
+  setValue: ReturnType<typeof useForm<TrainerOnboardingFormValues>>['setValue'];
+  errors: FieldErrors<TrainerOnboardingFormValues>;
+}) {
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState('');
+  const lastDetectedCityRef = useRef('');
+  const stateManuallyEditedRef = useRef(false);
+  const cityValue = useWatch({ control, name: 'profile.city' });
+  const stateField = register('profile.state');
+
+  useEffect(() => {
+    if (!cityValue || cityValue === lastDetectedCityRef.current || stateManuallyEditedRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      const state = lookupStateForCity(cityValue);
+      if (state) {
+        setValue('profile.state', state, { shouldDirty: true, shouldValidate: true });
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [cityValue, setValue]);
+
+  function detectLocation() {
+    setDetectError('');
+
+    if (!navigator.geolocation) {
+      setDetectError('Location detection is not supported on this device. Enter your city manually.');
+      return;
+    }
+
+    setDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
+          .then((response) => {
+            if (!response.ok) throw new Error('Reverse geocode request failed.');
+            return response.json();
+          })
+          .then((data: { city?: string; locality?: string; principalSubdivision?: string }) => {
+            const city = (data.city || data.locality || '').trim();
+            if (!city) {
+              setDetectError('Could not detect your location automatically. Enter your city and state manually.');
+              return;
+            }
+
+            const state = (data.principalSubdivision || '').trim() || lookupStateForCity(city);
+            lastDetectedCityRef.current = city;
+            stateManuallyEditedRef.current = false;
+            setValue('profile.city', city, { shouldDirty: true, shouldValidate: true });
+            if (state) {
+              setValue('profile.state', state, { shouldDirty: true, shouldValidate: true });
+            }
+          })
+          .catch(() => {
+            setDetectError('Could not detect your location automatically. Enter your city and state manually.');
+          })
+          .finally(() => setDetecting(false));
+      },
+      (error) => {
+        setDetecting(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          setDetectError('Location access was denied. You can enter your city manually.');
+        } else if (error.code === error.TIMEOUT) {
+          setDetectError('Location detection timed out. You can enter your city manually.');
+        } else {
+          setDetectError('Could not detect your location. You can enter your city manually.');
+        }
+      },
+      { timeout: 8000, maximumAge: 60000 },
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={detectLocation}
+        disabled={detecting}
+        className="inline-flex items-center gap-2 rounded-full border border-[#e5ddff] bg-[#f7f3ff] px-4 py-2 text-sm font-semibold text-[#5f3dff] transition hover:bg-[#efe8ff] disabled:opacity-60"
+      >
+        <MapPin className="h-4 w-4" strokeWidth={2} />
+        {detecting ? 'Detecting your location...' : 'Detect my location'}
+      </button>
+
+      {detectError ? <p className="text-xs text-rose-600">{detectError}</p> : null}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormInput
+          label="City"
+          placeholder="Hyderabad"
+          inputProps={register('profile.city')}
+          error={findErrorMessage(errors, 'profile.city')}
+        />
+
+        <FormInput
+          label="State"
+          placeholder="Telangana"
+          inputProps={{
+            ...stateField,
+            onChange: (event) => {
+              stateManuallyEditedRef.current = true;
+              void stateField.onChange(event);
+            },
+          }}
+          error={findErrorMessage(errors, 'profile.state')}
+        />
+      </div>
+    </div>
+  );
+}
+
 function FormInput({
   label,
   error,
@@ -2936,7 +3203,7 @@ function FormInput({
       <span className="text-sm font-semibold text-slate-800">{label}</span>
       <div
         className={cn(
-          'group flex min-h-12 items-center gap-3 rounded-[16px] border border-slate-300 bg-white px-4 shadow-[0_10px_24px_rgba(86,74,164,0.06)] transition focus-within:border-[#8d6bff] focus-within:ring-4 focus-within:ring-[#7c5cff1a] sm:min-h-[52px] [@media(max-height:760px)]:lg:min-h-11',
+          'group flex min-h-12 items-center gap-3 rounded-[16px] border border-slate-300 bg-white px-4 shadow-[0_10px_24px_rgba(86,74,164,0.06)] transition focus-within:border-[#8d6bff] focus-within:ring-4 focus-within:ring-[#7c5cff1a] sm:min-h-[52px] short:lg:min-h-11',
           error && 'border-rose-300 focus-within:ring-[rgba(244,63,94,0.12)]',
         )}
       >
@@ -2977,7 +3244,7 @@ function FormTextArea({
       <Textarea
         placeholder={placeholder}
         className={cn(
-          'min-h-28 rounded-xl border-slate-300 bg-white px-4 py-3 text-[0.98rem] leading-6 transition focus-visible:ring-[3px] focus-visible:ring-[rgba(47,79,136,0.12)] [@media(max-height:760px)]:lg:min-h-24',
+          'min-h-28 rounded-xl border-slate-300 bg-white px-4 py-3 text-[0.98rem] leading-6 transition focus-visible:ring-[3px] focus-visible:ring-[rgba(47,79,136,0.12)] short:lg:min-h-24',
           error && 'border-rose-300 focus-visible:ring-[rgba(244,63,94,0.12)]',
         )}
         {...textAreaProps}
@@ -3113,7 +3380,7 @@ function ChipSelector({
               type="button"
               onClick={() => onChange(active ? value.filter((item) => item !== option) : [...value, option])}
               className={cn(
-                'rounded-full border px-3.5 py-2.5 text-sm font-semibold transition [@media(max-height:760px)]:lg:py-2',
+                'rounded-full border px-3.5 py-2.5 text-sm font-semibold transition short:lg:py-2',
                 active
                   ? 'border-[#6b3dff] bg-[linear-gradient(135deg,#6b3dff_0%,#7f52ff_100%)] text-white shadow-[0_10px_22px_rgba(107,61,255,0.24)]'
                   : 'border-slate-300 bg-white text-slate-700 hover:border-[#c7bbff] hover:bg-[#faf8ff]',
@@ -3198,9 +3465,9 @@ function SingleUploadField({
       {file?.previewUrl && previewKind ? (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {previewKind === 'image' ? (
-            <img src={file.previewUrl} alt={`${label} preview`} className="h-36 w-full object-cover sm:h-44 [@media(max-height:760px)]:lg:h-32" />
+            <img src={file.previewUrl} alt={`${label} preview`} className="h-36 w-full object-cover sm:h-44 short:lg:h-32" />
           ) : (
-            <video src={file.previewUrl} controls preload="metadata" className="h-36 w-full bg-slate-950 object-cover sm:h-44 [@media(max-height:760px)]:lg:h-32" />
+            <video src={file.previewUrl} controls preload="metadata" className="h-36 w-full bg-slate-950 object-cover sm:h-44 short:lg:h-32" />
           )}
         </div>
       ) : null}
@@ -3281,10 +3548,10 @@ function MultiUploadField({
           {files.map((file) => (
             <div key={file.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               {file.previewUrl && previewKind === 'image' ? (
-                <img src={file.previewUrl} alt={`${file.name} preview`} className="h-24 w-full object-cover sm:h-28 [@media(max-height:760px)]:lg:h-20" />
+                <img src={file.previewUrl} alt={`${file.name} preview`} className="h-24 w-full object-cover sm:h-28 short:lg:h-20" />
               ) : null}
               {file.previewUrl && previewKind === 'video' ? (
-                <video src={file.previewUrl} controls preload="metadata" className="h-24 w-full bg-slate-950 object-cover sm:h-28 [@media(max-height:760px)]:lg:h-20" />
+                <video src={file.previewUrl} controls preload="metadata" className="h-24 w-full bg-slate-950 object-cover sm:h-28 short:lg:h-20" />
               ) : null}
               <div className="flex items-center justify-between gap-3 p-3">
                 <div className="min-w-0">
@@ -3323,7 +3590,7 @@ function PhotoCropEditor({
   const [isReady, setIsReady] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
-  useEffect(() => () => cropperRef.current?.destroy(), []);
+  useEffect(() => () => { cropperRef.current?.destroy(); }, []);
 
   function closeEditor() {
     cropperRef.current?.destroy();
@@ -3424,7 +3691,7 @@ function PhotoCropEditor({
           </header>
 
           <div className="grid gap-4 p-3 lg:grid-cols-[minmax(0,1fr)_160px]">
-            <div className="h-[280px] overflow-hidden rounded-lg bg-slate-950 sm:h-[340px] lg:h-[320px] [@media(max-height:760px)]:lg:h-[240px] [@media(max-height:680px)]:lg:h-[200px]">
+            <div className="h-[280px] overflow-hidden rounded-lg bg-slate-950 sm:h-[340px] lg:h-[320px] short:lg:h-[240px] shortest:lg:h-[200px]">
               <img
                 ref={imageRef}
                 src={source.previewUrl}
@@ -3437,7 +3704,7 @@ function PhotoCropEditor({
             <div className="space-y-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-slate-500">Profile preview</p>
-                <div className="trainer-photo-crop-preview mt-2 aspect-[4/5] max-h-44 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 [@media(max-height:760px)]:lg:max-h-32" />
+                <div className="trainer-photo-crop-preview mt-2 aspect-[4/5] max-h-44 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 short:lg:max-h-32" />
               </div>
 
               <div className="grid grid-cols-3 gap-2" aria-label="Crop controls">

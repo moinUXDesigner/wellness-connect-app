@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['client_id', 'care_plan_id', 'exercise_response_id', 'risk_type', 'risk_level', 'trigger_text', 'action_taken', 'alerted_practitioner_id', 'status'])]
 class CbtRiskEvent extends Model
 {
+    use SoftDeletes;
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');

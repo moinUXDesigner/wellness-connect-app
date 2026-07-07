@@ -22,7 +22,7 @@ class AdminUserDeletionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_delete_a_user_and_revoke_tokens(): void
+    public function test_admin_can_anonymise_a_user_and_revoke_tokens(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $user = User::factory()->create(['role' => 'client', 'status' => 'active']);
@@ -33,7 +33,9 @@ class AdminUserDeletionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('user.id', (string) $user->id);
 
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        $user->refresh();
+        $this->assertStringStartsWith('deleted+', $user->email);
+        $this->assertSame('suspended', $user->status);
         $this->assertDatabaseMissing('personal_access_tokens', [
             'tokenable_id' => $user->id,
             'tokenable_type' => User::class,
@@ -64,7 +66,7 @@ class AdminUserDeletionTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $user->id]);
     }
 
-    public function test_appointment_audit_events_explain_why_a_user_cannot_be_deleted(): void
+    public function test_appointment_audit_events_do_not_block_anonymisation(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $user = User::factory()->create(['role' => 'client', 'status' => 'active']);
@@ -84,16 +86,13 @@ class AdminUserDeletionTest extends TestCase
         ]);
         Sanctum::actingAs($admin);
 
-        $this->deleteJson("/api/v1/admin/users/{$user->id}")
-            ->assertConflict()
-            ->assertJsonPath('blockers.0.code', 'appointment_events')
-            ->assertJsonPath('blockers.0.label', 'Appointment audit events')
-            ->assertJsonPath('blockers.0.count', 1);
+        $this->deleteJson("/api/v1/admin/users/{$user->id}")->assertOk();
 
-        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $user->refresh();
+        $this->assertStringStartsWith('deleted+', $user->email);
     }
 
-    public function test_financial_actions_explain_why_a_user_cannot_be_deleted(): void
+    public function test_financial_actions_do_not_block_anonymisation(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $actor = User::factory()->create(['role' => 'finance', 'status' => 'active']);
@@ -117,15 +116,13 @@ class AdminUserDeletionTest extends TestCase
         ]);
         Sanctum::actingAs($admin);
 
-        $this->deleteJson("/api/v1/admin/users/{$actor->id}")
-            ->assertConflict()
-            ->assertJsonFragment(['code' => 'credit_adjustments', 'label' => 'Credit adjustment actions', 'count' => 1])
-            ->assertJsonFragment(['code' => 'membership_refund_actions', 'label' => 'Membership refund actions', 'count' => 1]);
+        $this->deleteJson("/api/v1/admin/users/{$actor->id}")->assertOk();
 
-        $this->assertDatabaseHas('users', ['id' => $actor->id]);
+        $actor->refresh();
+        $this->assertStringStartsWith('deleted+', $actor->email);
     }
 
-    public function test_client_billing_history_reports_each_protected_record_category(): void
+    public function test_client_billing_history_does_not_block_anonymisation(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $client = User::factory()->create(['role' => 'client', 'status' => 'active']);
@@ -161,13 +158,10 @@ class AdminUserDeletionTest extends TestCase
         ]);
         Sanctum::actingAs($admin);
 
-        $this->deleteJson("/api/v1/admin/users/{$client->id}")
-            ->assertConflict()
-            ->assertJsonFragment(['code' => 'membership_receipts', 'label' => 'Membership receipts', 'count' => 1])
-            ->assertJsonFragment(['code' => 'entitlement_periods', 'label' => 'Membership entitlement history', 'count' => 1])
-            ->assertJsonFragment(['code' => 'revenue_recognitions', 'label' => 'Revenue recognition history', 'count' => 1]);
+        $this->deleteJson("/api/v1/admin/users/{$client->id}")->assertOk();
 
-        $this->assertDatabaseHas('users', ['id' => $client->id]);
+        $client->refresh();
+        $this->assertStringStartsWith('deleted+', $client->email);
     }
 
     private function billingRecordsFor(User $client): array

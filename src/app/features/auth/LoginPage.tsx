@@ -83,15 +83,15 @@ export default function LoginPage() {
                   }}
                 >
                   <div className="space-y-2 sm:space-y-2.5">
-                    <label className="block text-[0.95rem] font-semibold text-[#14185c] sm:text-[1.05rem]">Email address</label>
+                    <label className="block text-[0.95rem] font-semibold text-[#14185c] sm:text-[1.05rem]">Email or mobile number</label>
                     <InputShell tone="active" icon={<Mail className="h-5 w-5" strokeWidth={2.2} />}>
                       <input
-                        autoComplete="email"
+                        autoComplete="username"
                         className="w-full bg-transparent text-[0.98rem] font-medium text-[#151a5f] placeholder:text-[#959dbb] focus:outline-none sm:text-[1rem]"
-                        type="email"
+                        type="text"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
-                        placeholder="Enter your email"
+                        placeholder="Enter your email or mobile number"
                         required
                       />
                     </InputShell>

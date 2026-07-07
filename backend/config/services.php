@@ -51,4 +51,15 @@ return [
         'max_attempts' => (int) env('TRAINER_OTP_MAX_ATTEMPTS', 5),
     ],
 
+    'trainer_email_otp' => [
+        'code' => env('TRAINER_EMAIL_OTP_DUMMY_CODE', '123456'),
+        'expiry_minutes' => (int) env('TRAINER_EMAIL_OTP_EXPIRY_MINUTES', 10),
+        'resend_seconds' => (int) env('TRAINER_EMAIL_OTP_RESEND_SECONDS', 60),
+        'max_attempts' => (int) env('TRAINER_EMAIL_OTP_MAX_ATTEMPTS', 5),
+    ],
+
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
 ];

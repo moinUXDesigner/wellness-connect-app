@@ -42,9 +42,17 @@ export type TrainerApplicationReviewResult = {
   account?: NonNullable<TrainerApplicationResponse['account']>;
 };
 
-export type TrainerOtpChallenge = {
+export type TrainerMobileOtpChallenge = {
   challengeToken: string;
   maskedMobile: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+  message: string;
+};
+
+export type TrainerEmailOtpChallenge = {
+  challengeToken: string;
+  maskedEmail: string;
   expiresAt: string;
   resendAvailableAt: string;
   message: string;
@@ -103,13 +111,13 @@ function normalizeTrainerApplicationRecord(application: TrainerApplicationRespon
   };
 }
 
-export async function requestTrainerRegistrationOtp(input: { name: string; email: string; password: string; mobile: string; consent_to_terms: boolean }) {
-  const response = await fetch(`${API_BASE}/auth/trainer-register/otp/request`, {
+export async function requestTrainerMobileOtp(input: { mobile: string; consent_to_terms: boolean }) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/mobile-otp/request`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const data = await readJson(response) as TrainerOtpChallenge | { message?: string } | null;
+  const data = await readJson(response) as TrainerMobileOtpChallenge | { message?: string } | null;
   if (!response.ok || !data || !('challengeToken' in data)) {
     throw new Error(String(data?.message ?? 'Unable to send a verification code.'));
   }
@@ -117,15 +125,57 @@ export async function requestTrainerRegistrationOtp(input: { name: string; email
   return data;
 }
 
-export async function verifyTrainerRegistrationOtp(input: { challengeToken: string; otp: string }) {
-  const response = await fetch(`${API_BASE}/auth/trainer-register/otp/verify`, {
+export async function verifyTrainerMobileOtp(input: { challengeToken: string; otp: string }) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/mobile-otp/verify`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await readJson(response) as { challengeToken?: string; mobileVerified?: boolean; maskedMobile?: string; message?: string } | null;
+  if (!response.ok || !data?.challengeToken || !data.mobileVerified) {
+    throw new Error(String(data?.message ?? 'Unable to verify your mobile number.'));
+  }
+
+  return data as { challengeToken: string; mobileVerified: true; maskedMobile: string; message: string };
+}
+
+export async function resendTrainerMobileOtp(challengeToken: string) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/mobile-otp/resend`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challengeToken }),
+  });
+  const data = await readJson(response) as TrainerMobileOtpChallenge | { message?: string } | null;
+  if (!response.ok || !data || !('challengeToken' in data)) {
+    throw new Error(String(data?.message ?? 'Unable to resend a verification code.'));
+  }
+
+  return data;
+}
+
+export async function requestTrainerEmailOtp(input: { challengeToken: string; name: string; email: string; password: string }) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/email-otp/request`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await readJson(response) as TrainerEmailOtpChallenge | { message?: string } | null;
+  if (!response.ok || !data || !('challengeToken' in data)) {
+    throw new Error(String(data?.message ?? 'Unable to send a verification code.'));
+  }
+
+  return data;
+}
+
+export async function verifyTrainerEmailOtp(input: { challengeToken: string; otp: string }) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/email-otp/verify`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   const data = await readJson(response) as (TrainerApplicationResponse & { token?: string; user?: AuthUser; message?: string }) | null;
   if (!response.ok || !data?.token || !data.user || !data.application) {
-    throw new Error(String(data?.message ?? 'Unable to verify your mobile number.'));
+    throw new Error(String(data?.message ?? 'Unable to verify your email address.'));
   }
 
   setAuthState(data.token, data.user);
@@ -134,18 +184,35 @@ export async function verifyTrainerRegistrationOtp(input: { challengeToken: stri
   return application;
 }
 
-export async function resendTrainerRegistrationOtp(challengeToken: string) {
-  const response = await fetch(`${API_BASE}/auth/trainer-register/otp/resend`, {
+export async function resendTrainerEmailOtp(challengeToken: string) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/email-otp/resend`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ challengeToken }),
   });
-  const data = await readJson(response) as TrainerOtpChallenge | { message?: string } | null;
+  const data = await readJson(response) as TrainerEmailOtpChallenge | { message?: string } | null;
   if (!response.ok || !data || !('challengeToken' in data)) {
     throw new Error(String(data?.message ?? 'Unable to resend a verification code.'));
   }
 
   return data;
+}
+
+export async function registerTrainerWithGoogle(input: { challengeToken: string; idToken: string }) {
+  const response = await fetch(`${API_BASE}/auth/trainer-register/google`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await readJson(response) as (TrainerApplicationResponse & { token?: string; user?: AuthUser; message?: string }) | null;
+  if (!response.ok || !data?.token || !data.user || !data.application) {
+    throw new Error(String(data?.message ?? 'Unable to continue with Google.'));
+  }
+
+  setAuthState(data.token, data.user);
+  const application = normalizeTrainerApplicationRecord(data.application);
+  upsertTrainerApplication(application);
+  return application;
 }
 
 export async function fetchCurrentTrainerApplicationFromApi() {

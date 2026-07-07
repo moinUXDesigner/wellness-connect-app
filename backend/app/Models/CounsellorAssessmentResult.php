@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['appointment_id', 'session_note_id', 'client_user_id', 'practitioner_id', 'assessment_type', 'answers_json', 'score', 'severity', 'administered_at'])]
 class CounsellorAssessmentResult extends Model
 {
+    use SoftDeletes;
     protected function casts(): array
     {
         return [

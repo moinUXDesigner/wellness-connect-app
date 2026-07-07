@@ -23,9 +23,12 @@ class PaymentWebhookController extends Controller
         abort_unless($this->gateway->verifyWebhook($payload, $signature), 403, 'Invalid webhook signature.');
         $data = $request->json()->all();
         $eventId = (string) ($data['id'] ?? hash('sha256', $payload));
-        if (PaymentWebhookEvent::query()->where('external_event_id', $eventId)->exists()) {
+
+        // Only block if the event was fully processed. 'failed' or 'received' events may be retried.
+        if (PaymentWebhookEvent::query()->where('external_event_id', $eventId)->where('status', 'processed')->exists()) {
             return response()->json(['message' => 'Webhook already processed.']);
         }
+
         $event = PaymentWebhookEvent::query()->create([
             'external_event_id' => $eventId,
             'event_type' => (string) ($data['event'] ?? 'unknown'),
@@ -33,15 +36,23 @@ class PaymentWebhookController extends Controller
             'payload_json' => $data,
             'status' => 'received',
         ]);
-        if (($data['event'] ?? null) === 'payment.captured') {
-            $providerOrderId = data_get($data, 'payload.payment.entity.order_id');
-            $providerPaymentId = data_get($data, 'payload.payment.entity.id');
-            $payment = MembershipPayment::query()->where('provider_order_id', $providerOrderId)->first();
-            if ($payment && $providerPaymentId) {
-                $this->billing->activateCapturedPayment($payment, (string) $providerPaymentId);
+
+        try {
+            if (($data['event'] ?? null) === 'payment.captured') {
+                $providerOrderId = data_get($data, 'payload.payment.entity.order_id');
+                $providerPaymentId = data_get($data, 'payload.payment.entity.id');
+                $payment = MembershipPayment::query()->where('provider_order_id', $providerOrderId)->first();
+                if ($payment && $providerPaymentId) {
+                    $this->billing->activateCapturedPayment($payment, (string) $providerPaymentId);
+                }
             }
+            $event->update(['status' => 'processed', 'processed_at' => now()]);
+        } catch (\Throwable $e) {
+            // Mark as failed so Razorpay retries can attempt re-processing.
+            $event->update(['status' => 'failed']);
+            throw $e;
         }
-        $event->update(['status' => 'processed', 'processed_at' => now()]);
+
         return response()->json(['message' => 'Webhook processed.']);
     }
 }

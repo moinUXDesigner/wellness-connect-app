@@ -51,6 +51,7 @@ const MOBILE_NAV_LINKS = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'About', href: '#about' },
+  { label: 'Careers', to: '/careers' },
   { label: 'Sign In', to: '/login' },
 ];
 

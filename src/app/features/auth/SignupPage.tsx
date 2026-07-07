@@ -29,7 +29,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('client');
   const [goal, setGoal] = useState<(typeof goals)[number]['value']>('fitness');
-  const [consent, setConsent] = useState(true);
+  const [consent, setConsent] = useState(false);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 

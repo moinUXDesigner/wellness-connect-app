@@ -1,4 +1,4 @@
-import type { FieldPath } from 'react-hook-form';
+import type { DeepPartialSkipArrayKey, FieldPath } from 'react-hook-form';
 import { z } from 'zod';
 
 export const trainerOnboardingStorageKey = 'wc_trainer_onboarding_v3';
@@ -165,6 +165,18 @@ function withoutPreview(file: UploadValue | null | undefined): UploadValue | nul
   return metadata;
 }
 
+// Uploads are always written as a single complete object (see the upload handlers in
+// TrainerOnboardingPage), never built up field-by-field, so a watched upload value is
+// either fully populated or absent - it's safe to assert past react-hook-form's
+// DeepPartialSkipArrayKey typing here.
+function uploadValue(value: DeepPartialSkipArrayKey<UploadValue> | null | undefined): UploadValue | null {
+  return (value as UploadValue | undefined) ?? null;
+}
+
+function uploadValueList(value: DeepPartialSkipArrayKey<UploadValue>[] | undefined): UploadValue[] {
+  return (value as UploadValue[] | undefined) ?? [];
+}
+
 export const trainerOnboardingDefaultValues: TrainerOnboardingFormValues = {
   profile: {
     fullName: '',
@@ -242,7 +254,6 @@ export const trainerDayOptions = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 
 export type TrainerOnboardingScreenId =
   | 'personalInfo'
   | 'dateOfBirth'
-  | 'contact'
   | 'location'
   | 'photo'
   | 'certification'
@@ -289,16 +300,6 @@ export const trainerOnboardingScreens: TrainerOnboardingScreen[] = [
     helper: 'You need to be at least 18 to apply.',
     buttonLabel: 'Next',
     fields: ['profile.dateOfBirth'],
-  },
-  {
-    id: 'contact',
-    animationKey: 'personalInfo',
-    eyebrow: 'Contact',
-    title: 'How can we reach you?',
-    description: 'We will use these details for application updates, interview scheduling, and profile verification.',
-    helper: 'Use the number you actually answer.',
-    buttonLabel: 'Next',
-    fields: ['profile.email', 'profile.mobile'],
   },
   {
     id: 'location',
@@ -497,7 +498,7 @@ export interface PersistedTrainerOnboardingState {
   applicationId: string | null;
 }
 
-export function mergeTrainerOnboardingValues(values?: Partial<TrainerOnboardingFormValues>): TrainerOnboardingFormValues {
+export function mergeTrainerOnboardingValues(values?: DeepPartialSkipArrayKey<TrainerOnboardingFormValues>): TrainerOnboardingFormValues {
   return {
     profile: {
       fullName: textValue(values?.profile?.fullName),
@@ -508,8 +509,17 @@ export function mergeTrainerOnboardingValues(values?: Partial<TrainerOnboardingF
       city: textValue(values?.profile?.city),
       state: textValue(values?.profile?.state),
     },
-    photo: { ...trainerOnboardingDefaultValues.photo, ...values?.photo },
-    certification: { ...trainerOnboardingDefaultValues.certification, ...values?.certification },
+    photo: {
+      cropX: values?.photo?.cropX ?? trainerOnboardingDefaultValues.photo.cropX,
+      cropY: values?.photo?.cropY ?? trainerOnboardingDefaultValues.photo.cropY,
+      zoom: values?.photo?.zoom ?? trainerOnboardingDefaultValues.photo.zoom,
+      file: uploadValue(values?.photo?.file),
+    },
+    certification: {
+      institute: textValue(values?.certification?.institute),
+      type: textValue(values?.certification?.type),
+      certificate: uploadValue(values?.certification?.certificate),
+    },
     expertise: values?.expertise ?? trainerOnboardingDefaultValues.expertise,
     experience: {
       yearsExperience: textValue(values?.experience?.yearsExperience),
@@ -517,12 +527,12 @@ export function mergeTrainerOnboardingValues(values?: Partial<TrainerOnboardingF
     },
     clientPitch: textValue(values?.clientPitch),
     showcase: {
-      transformationPhotos: values?.showcase?.transformationPhotos ?? trainerOnboardingDefaultValues.showcase.transformationPhotos,
-      videos: values?.showcase?.videos ?? trainerOnboardingDefaultValues.showcase.videos,
+      transformationPhotos: uploadValueList(values?.showcase?.transformationPhotos),
+      videos: uploadValueList(values?.showcase?.videos),
     },
     training: {
       philosophy: textValue(values?.training?.philosophy),
-      introductionVideo: values?.training?.introductionVideo ?? null,
+      introductionVideo: uploadValue(values?.training?.introductionVideo),
     },
     availability: {
       modes: values?.availability?.modes ?? trainerOnboardingDefaultValues.availability.modes,
@@ -531,7 +541,12 @@ export function mergeTrainerOnboardingValues(values?: Partial<TrainerOnboardingF
       monthlyRateInr: textValue(values?.availability?.monthlyRateInr),
       pricingPlans: textValue(values?.availability?.pricingPlans),
     },
-    identity: { ...trainerOnboardingDefaultValues.identity, ...values?.identity },
+    identity: {
+      aadhaar: uploadValue(values?.identity?.aadhaar),
+      pan: uploadValue(values?.identity?.pan),
+      passport: uploadValue(values?.identity?.passport),
+      drivingLicense: uploadValue(values?.identity?.drivingLicense),
+    },
     payout: {
       bankName: textValue(values?.payout?.bankName),
       accountNumber: textValue(values?.payout?.accountNumber),

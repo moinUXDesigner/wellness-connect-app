@@ -18,6 +18,11 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        if (! app()->isLocal() && ! app()->environment('testing')) {
+            $this->command->warn('DatabaseSeeder: skipped — only runs in local/testing environments.');
+            return;
+        }
+
         $this->call(CbtTemplateSeeder::class);
 
         foreach ([

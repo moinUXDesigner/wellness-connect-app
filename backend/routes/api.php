@@ -31,11 +31,15 @@ use App\Http\Controllers\Api\WorkflowConfigController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
-    Route::prefix('auth')->group(function (): void {
+    Route::prefix('auth')->middleware('throttle:15,1')->group(function (): void {
         Route::post('/register', [AuthController::class, 'register']);
-        Route::post('/trainer-register/otp/request', [AuthController::class, 'requestTrainerRegistrationOtp']);
-        Route::post('/trainer-register/otp/verify', [AuthController::class, 'verifyTrainerRegistrationOtp']);
-        Route::post('/trainer-register/otp/resend', [AuthController::class, 'resendTrainerRegistrationOtp']);
+        Route::post('/trainer-register/mobile-otp/request', [AuthController::class, 'requestTrainerMobileOtp']);
+        Route::post('/trainer-register/mobile-otp/verify', [AuthController::class, 'verifyTrainerMobileOtp']);
+        Route::post('/trainer-register/mobile-otp/resend', [AuthController::class, 'resendTrainerMobileOtp']);
+        Route::post('/trainer-register/email-otp/request', [AuthController::class, 'requestTrainerEmailOtp']);
+        Route::post('/trainer-register/email-otp/verify', [AuthController::class, 'verifyTrainerEmailOtp']);
+        Route::post('/trainer-register/email-otp/resend', [AuthController::class, 'resendTrainerEmailOtp']);
+        Route::post('/trainer-register/google', [AuthController::class, 'googleTrainerRegister']);
         Route::post('/login', [AuthController::class, 'login']);
         Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
         Route::post('/reset-password', [AuthController::class, 'resetPassword']);
