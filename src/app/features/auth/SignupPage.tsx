@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { Role } from '../../types';
 import { registerRequest } from './apiAuth';
 import { getPostAuthRedirectPath } from './roleRedirects';
+import { notifyError } from '../shared/lib/toast';
 
 const signupRoles: Array<{ label: string; value: Role }> = [
   { label: 'Client', value: 'client' },
@@ -30,7 +31,6 @@ export default function SignupPage() {
   const [role, setRole] = useState<Role>('client');
   const [goal, setGoal] = useState<(typeof goals)[number]['value']>('fitness');
   const [consent, setConsent] = useState(false);
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   return (
@@ -41,7 +41,6 @@ export default function SignupPage() {
         className="mt-6 grid gap-4"
         onSubmit={async (event) => {
           event.preventDefault();
-          setNotice('');
           setLoading(true);
 
           try {
@@ -56,8 +55,7 @@ export default function SignupPage() {
             });
             navigate(getPostAuthRedirectPath(user));
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unable to create account.';
-            setNotice(message);
+            notifyError(error, 'Unable to create account.');
           } finally {
             setLoading(false);
           }
@@ -139,7 +137,6 @@ export default function SignupPage() {
           <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
           I agree to the platform terms and privacy policy.
         </label>
-        {notice ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{notice}</p> : null}
         <button
           className="rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"

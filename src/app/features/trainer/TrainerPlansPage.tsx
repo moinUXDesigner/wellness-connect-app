@@ -11,13 +11,13 @@ import {
   type TrainerClient,
   type TrainerPlan,
 } from './trainerWorkspaceApi';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 const today = new Date().toISOString().slice(0, 10);
 
 export default function TrainerPlansPage() {
   const [clients, setClients] = useState<TrainerClient[]>([]);
   const [plans, setPlans] = useState<TrainerPlan[]>([]);
-  const [notice, setNotice] = useState('');
   const [showNewPlan, setShowNewPlan] = useState(false);
   const [planDraft, setPlanDraft] = useState({ clientUserId: '', goalTitle: '', goalDescription: '', startsOn: today, targetDate: '' });
   const [activityDraft, setActivityDraft] = useState<{ planId: number | null; title: string; scheduledFor: string }>({ planId: null, title: '', scheduledFor: today });
@@ -28,7 +28,7 @@ export default function TrainerPlansPage() {
       setClients(nextClients);
       setPlans(nextPlans);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to load training plans.');
+      notifyError(error, 'Unable to load training plans.');
     }
   }
 
@@ -46,10 +46,10 @@ export default function TrainerPlansPage() {
       });
       setPlanDraft({ clientUserId: '', goalTitle: '', goalDescription: '', startsOn: today, targetDate: '' });
       setShowNewPlan(false);
-      setNotice('Training plan assigned.');
+      notifySuccess('Training plan assigned.');
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to create plan.');
+      notifyError(error, 'Unable to create plan.');
     }
   }
 
@@ -58,7 +58,7 @@ export default function TrainerPlansPage() {
     if (!activityDraft.planId) return;
     await createTrainerActivity(activityDraft.planId, { title: activityDraft.title, scheduledFor: activityDraft.scheduledFor });
     setActivityDraft({ planId: null, title: '', scheduledFor: today });
-    setNotice('Workout scheduled.');
+    notifySuccess('Workout scheduled.');
     await refresh();
   }
 
@@ -74,7 +74,6 @@ export default function TrainerPlansPage() {
           <Plus size={16} /> Assign plan
         </button>
       </div>
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
 
       {showNewPlan ? (
         <Panel title="Assign Client Plan">

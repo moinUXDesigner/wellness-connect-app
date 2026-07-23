@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, AlertTriangle, ClipboardCheck } from 'lucide-react';
 import { Panel, ToneBadge } from '../shared/components/Ui';
 import { createTrainerCheckIn, getTrainerCheckIns, getTrainerPlans, type TrainerActivity, type TrainerCheckIn, type TrainerPlan } from './trainerWorkspaceApi';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 const today = new Date().toISOString().slice(0, 10);
 
 export default function TrainerCheckinsPage() {
   const [plans, setPlans] = useState<TrainerPlan[]>([]);
   const [checkIns, setCheckIns] = useState<TrainerCheckIn[]>([]);
-  const [notice, setNotice] = useState('');
   const [draft, setDraft] = useState({ planId: '', checkedInOn: today, weightKg: '', goalProgressPercent: 0, notes: '', painReported: false, painSeverity: 'mild' as 'mild' | 'moderate' | 'severe', painNotes: '' });
   const [activityUpdates, setActivityUpdates] = useState<Record<number, TrainerActivity['status']>>({});
   const selectedPlan = useMemo(() => plans.find((plan) => plan.id === Number(draft.planId)), [plans, draft.planId]);
@@ -19,7 +19,7 @@ export default function TrainerCheckinsPage() {
       setPlans(nextPlans.filter((plan) => plan.status === 'active'));
       setCheckIns(nextCheckIns);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to load check-ins.');
+      notifyError(error, 'Unable to load check-ins.');
     }
   }
   useEffect(() => { void refresh(); }, []);
@@ -49,10 +49,10 @@ export default function TrainerCheckinsPage() {
       });
       setDraft({ planId: '', checkedInOn: today, weightKg: '', goalProgressPercent: 0, notes: '', painReported: false, painSeverity: 'mild', painNotes: '' });
       setActivityUpdates({});
-      setNotice('Check-in recorded and dashboard signals updated.');
+      notifySuccess('Check-in recorded and dashboard signals updated.');
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to record check-in.');
+      notifyError(error, 'Unable to record check-in.');
     }
   }
 
@@ -63,7 +63,6 @@ export default function TrainerCheckinsPage() {
         <h1 className="mt-1 text-2xl font-semibold text-slate-900">Check-ins</h1>
         <p className="mt-1 text-sm text-slate-600">Capture workout outcomes, measurable progress, and safety concerns.</p>
       </header>
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel title="Record Check-in">
           <form onSubmit={submit} className="space-y-3">

@@ -40,4 +40,6 @@ export const colorTokens = {
   warningLight:   '#FEF3C7',
   danger:         '#B91C1C',
   dangerLight:    '#FEE2E2',
+  info:           '#3B82F6',
+  infoLight:      '#DBEAFE',
 };

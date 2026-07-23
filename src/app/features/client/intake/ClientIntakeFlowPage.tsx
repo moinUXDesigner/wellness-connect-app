@@ -49,6 +49,7 @@ import { MobileSectionTitle } from '../../../../design/patterns/intake';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../../components/ui/dialog';
 import { UserAvatar } from '../../../components/UserAvatar';
 import { getClientMemberships, type ClientMembership } from '../../shared/services/membershipApi';
+import { notifyError, toast } from '../../shared/lib/toast';
 
 type ServiceType = 'psychology' | 'training' | 'combined' | 'package';
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -525,7 +526,6 @@ export default function ClientIntakeFlowPage() {
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState('');
   const [pickerMode, setPickerMode] = useState<PickerMode | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerItem[]>([]);
   const [slots, setSlots] = useState<SlotItem[]>([]);
@@ -616,7 +616,7 @@ export default function ClientIntakeFlowPage() {
   useEffect(() => {
     if (state.step < 3 || !state.flowId) return;
     getRecommendedPractitioners(state.flowId).then(setPractitioners).catch(() => {
-      setNotice('Unable to load practitioners.');
+      toast.error('Unable to load practitioners.');
     });
   }, [state.step, state.flowId]);
 
@@ -700,13 +700,12 @@ export default function ClientIntakeFlowPage() {
 
   async function onContinueFromService() {
     setLoading(true);
-    setNotice('');
     try {
       const created = await createIntakeFlow(state.serviceType);
       dispatch({ type: 'SET_FLOW', payload: created.intake_flow_id });
       dispatch({ type: 'SET_STEP', payload: 2 });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to start intake.');
+      notifyError(error, 'Unable to start intake.');
     } finally {
       setLoading(false);
     }
@@ -715,7 +714,6 @@ export default function ClientIntakeFlowPage() {
   async function onContinueFromIntake() {
     if (!state.flowId) return;
     setLoading(true);
-    setNotice('');
     try {
       await saveIntakeAnswers(state.flowId, [
         { section_key: state.serviceType, question_key: `${state.serviceType}.concern`, answer_type: 'single', answer_json: state.concern },
@@ -736,7 +734,7 @@ export default function ClientIntakeFlowPage() {
         dispatch({ type: 'SET_STEP', payload: 3 });
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to submit intake.');
+      notifyError(error, 'Unable to submit intake.');
     } finally {
       setLoading(false);
     }
@@ -745,7 +743,6 @@ export default function ClientIntakeFlowPage() {
   async function onReserveSingleSlot() {
     if (!state.flowId || !state.selectedPractitionerId || !state.selectedSlotId) return;
     setLoading(true);
-    setNotice('');
 
     try {
       await bookAppointmentRequest({
@@ -760,7 +757,7 @@ export default function ClientIntakeFlowPage() {
       dispatch({ type: 'SET_FIELD', payload: { status: 'booked' } });
       dispatch({ type: 'SET_STEP', payload: 6 });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to reserve slot.');
+      notifyError(error, 'Unable to reserve slot.');
     } finally {
       setLoading(false);
     }
@@ -769,7 +766,6 @@ export default function ClientIntakeFlowPage() {
   async function onReserveCombinedSlots() {
     if (!state.flowId || !state.selectedPsychologistId || !state.selectedPsychologistSlotId || !state.selectedTrainerId || !state.selectedTrainerSlotId) return;
     setLoading(true);
-    setNotice('');
 
     try {
       await bookAppointmentRequest({
@@ -789,7 +785,7 @@ export default function ClientIntakeFlowPage() {
       dispatch({ type: 'SET_FIELD', payload: { status: 'booked' } });
       dispatch({ type: 'SET_STEP', payload: 6 });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to reserve both slots.');
+      notifyError(error, 'Unable to reserve both slots.');
     } finally {
       setLoading(false);
     }
@@ -1715,8 +1711,6 @@ export default function ClientIntakeFlowPage() {
             </div>
           </DialogContent>
         </Dialog>
-
-        {notice ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{notice}</p> : null}
       </div>
     </div>
   );

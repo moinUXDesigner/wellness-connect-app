@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { resetPasswordRequest } from './apiAuth';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -10,7 +11,6 @@ export default function ResetPasswordPage() {
   const [email, setEmail] = useState(presetEmail);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   const canSubmit = useMemo(() => Boolean(token && email && password && confirmPassword), [token, email, password, confirmPassword]);
@@ -26,7 +26,6 @@ export default function ResetPasswordPage() {
         className="mt-6 space-y-4"
         onSubmit={async (event) => {
           event.preventDefault();
-          setNotice('');
           setLoading(true);
           try {
             const message = await resetPasswordRequest({
@@ -35,11 +34,10 @@ export default function ResetPasswordPage() {
               password,
               password_confirmation: confirmPassword,
             });
-            setNotice(message);
+            notifySuccess(message);
             setTimeout(() => navigate('/login'), 1200);
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unable to reset password.';
-            setNotice(message);
+            notifyError(error, 'Unable to reset password.');
           } finally {
             setLoading(false);
           }
@@ -77,7 +75,6 @@ export default function ResetPasswordPage() {
             required
           />
         </div>
-        {notice ? <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">{notice}</p> : null}
         <button
           className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"

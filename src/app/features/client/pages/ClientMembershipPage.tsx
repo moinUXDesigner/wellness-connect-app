@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { getClientMemberships, type ClientMembership } from '../../shared/services/membershipApi';
+import { notifyError } from '../../shared/lib/toast';
 
 type Tone = 'violet' | 'blue' | 'green' | 'orange';
 
@@ -110,13 +111,12 @@ function formatDate(value?: string | null, fallback = 'Jun 12, 2026') {
 export default function ClientMembershipPage() {
   const navigate = useNavigate();
   const [memberships, setMemberships] = useState<ClientMembership[]>([]);
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getClientMemberships()
       .then(setMemberships)
-      .catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to load memberships.'))
+      .catch((error) => notifyError(error, 'Unable to load memberships.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -170,7 +170,6 @@ export default function ClientMembershipPage() {
         <p className="mt-1 text-base leading-6 text-slate-500">View your active plan, benefits, session credits, billing, and upgrade options.</p>
       </header>
 
-      {notice ? <p className="rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{notice}</p> : null}
 
       {loading ? (
         <MembershipSkeleton />

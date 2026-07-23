@@ -3,6 +3,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { getAuthState } from '../auth/auth';
 import { createCheckoutOrder, getPublishedMembershipPlans, verifyCheckout, type MembershipTier, type PublishedMembershipPlan } from '../shared/services/membershipApi';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 declare global {
   interface Window {
@@ -29,11 +30,10 @@ export default function PricingPage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState<PublishedMembershipPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
   const [purchasing, setPurchasing] = useState<number | null>(null);
 
   useEffect(() => {
-    getPublishedMembershipPlans().then(setPlans).catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to load plans.')).finally(() => setLoading(false));
+    getPublishedMembershipPlans().then(setPlans).catch((error) => notifyError(error, 'Unable to load plans.')).finally(() => setLoading(false));
   }, []);
 
   async function checkout(plan: PublishedMembershipPlan, tier: MembershipTier) {
@@ -43,7 +43,6 @@ export default function PricingPage() {
       return;
     }
     setPurchasing(tier.id);
-    setNotice('');
     try {
       const ready = await loadRazorpay();
       if (!ready || !window.Razorpay) throw new Error('Payment checkout could not be loaded.');
@@ -58,13 +57,13 @@ export default function PricingPage() {
         prefill: { name: auth.user?.name, email: auth.user?.email },
         handler: async (response: { razorpay_payment_id: string; razorpay_signature: string }) => {
           const result = await verifyCheckout(order.paymentId, response.razorpay_payment_id, response.razorpay_signature);
-          setNotice(result.message);
+          notifySuccess(result.message);
           navigate('/client/membership');
         },
       });
       checkout.open();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to start checkout.');
+      notifyError(error, 'Unable to start checkout.');
     } finally {
       setPurchasing(null);
     }
@@ -77,7 +76,6 @@ export default function PricingPage() {
         <h1 className="mt-3 text-4xl font-semibold text-slate-900">Choose support that fits your journey</h1>
         <p className="mx-auto mt-3 max-w-2xl text-slate-600">Purchase included counselling and training credits securely through Razorpay. Regular appointment booking remains available without a membership.</p>
       </div>
-      {notice ? <p className="mx-auto mt-8 max-w-xl rounded-xl bg-indigo-50 p-4 text-center text-sm text-indigo-700">{notice}</p> : null}
       <section className="mt-10 grid gap-5 md:grid-cols-3">
         {loading ? Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-80 animate-pulse rounded-2xl bg-slate-100" />) : plans.length ? plans.map((plan) => (
           <article key={plan.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

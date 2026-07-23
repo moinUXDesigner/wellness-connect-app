@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   ArrowRight,
@@ -17,6 +17,7 @@ import { getPostAuthRedirectPath } from './roleRedirects';
 import brandLogo from '../../../assets/brand/aura-connect-logo.png';
 import brandTitle from '../../../assets/brand/aura-wellness-connect-title.svg';
 import loginHeroReference from '../../../assets/auth/login-hero-reference.png';
+import { notifyError, toast } from '../shared/lib/toast';
 
 const shellBackground =
   'radial-gradient(circle at 15% 18%, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.95) 24%, rgba(248,245,255,0.93) 65%, rgba(244,240,255,0.96) 100%)';
@@ -33,12 +34,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [googleNotice, setGoogleNotice] = useState('');
-  const [notice, setNotice] = useState(() => {
-    const state = location.state as { authNotice?: string } | null;
-    return state?.authNotice ?? '';
-  });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const state = location.state as { authNotice?: string } | null;
+    if (state?.authNotice) toast.warning(state.authNotice);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ffffff_0%,_#f7f4ff_42%,_#f3efff_100%)] px-0 py-0 text-[#090B3F] sm:px-4 lg:px-0">
@@ -67,16 +68,13 @@ export default function LoginPage() {
                   className="mt-7 space-y-5 sm:mt-10 sm:space-y-7"
                   onSubmit={async (event) => {
                     event.preventDefault();
-                    setNotice('');
-                    setGoogleNotice('');
                     setLoading(true);
 
                     try {
                       const user = await loginRequest(email, password);
                       navigate(getPostAuthRedirectPath(user));
                     } catch (error) {
-                      const message = error instanceof Error ? error.message : 'Unable to login.';
-                      setNotice(message);
+                      notifyError(error, 'Unable to login.');
                     } finally {
                       setLoading(false);
                     }
@@ -144,8 +142,6 @@ export default function LoginPage() {
                     </Link>
                   </div>
 
-                  {notice ? <Message tone="warning">{notice}</Message> : null}
-
                   <button
                     className="inline-flex h-[56px] w-full items-center justify-center gap-3 rounded-[16px] bg-[linear-gradient(90deg,#4b27ff_0%,#6f3dff_100%)] px-6 text-[1.08rem] font-semibold text-white shadow-[0_18px_36px_rgba(89,45,255,0.28)] transition hover:brightness-[1.03] disabled:cursor-not-allowed disabled:opacity-60 sm:h-[60px] sm:text-[1.18rem]"
                     type="submit"
@@ -165,16 +161,13 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setNotice('');
-                        setGoogleNotice('Google sign-in is coming soon. Please continue with email and password for now.');
+                        toast.info('Google sign-in is coming soon. Please continue with email and password for now.');
                       }}
                       className="inline-flex h-[56px] w-full items-center justify-center gap-4 rounded-[16px] border border-[#d9d1f5] bg-white px-6 text-[1rem] font-semibold text-[#182062] shadow-[0_12px_24px_rgba(122,102,211,0.08)] transition hover:border-[#cbbff8] hover:bg-[#fcfbff] sm:h-[60px] sm:text-[1.04rem]"
                     >
                       <GoogleIcon />
                       <span>Continue with Google</span>
                     </button>
-
-                    {googleNotice ? <Message tone="info">{googleNotice}</Message> : null}
                   </div>
                 </form>
 
@@ -273,15 +266,6 @@ function InputShell({
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </div>
   );
-}
-
-function Message({ children, tone }: { children: ReactNode; tone: 'warning' | 'info' }) {
-  const styles =
-    tone === 'warning'
-      ? 'border-[#f5d9ae] bg-[#fff8ee] text-[#9f6408]'
-      : 'border-[#d9d2fb] bg-[#f6f3ff] text-[#5a51a8]';
-
-  return <p className={`rounded-[16px] border px-4 py-3 text-sm font-medium leading-6 ${styles}`}>{children}</p>;
 }
 
 function IllustrationOrbit() {

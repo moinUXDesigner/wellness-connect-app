@@ -5,6 +5,7 @@ import type { Role } from '../../types';
 import { changePasswordRequest, getAccountProfileRequest, updateAccountAvatarRequest, updateAccountProfileRequest, type AccountProfileRoleDetails } from '../auth/apiAuth';
 import { getAuthState, type AuthUser } from '../auth/auth';
 import { ProfileAvatarUploader } from '../../components/ProfileAvatarUploader';
+import { notifyError, notifySuccess, toast } from '../shared/lib/toast';
 
 const goals = [
   { value: 'fitness', label: 'Fitness' },
@@ -42,8 +43,6 @@ export default function ProfilePage({ role }: { role: Role }) {
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [preferredLanguage, setPreferredLanguage] = useState('en');
   const [consent, setConsent] = useState(Boolean(authUser?.consent_to_terms));
-  const [notice, setNotice] = useState('');
-  const [passwordNotice, setPasswordNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -66,11 +65,10 @@ export default function ProfilePage({ role }: { role: Role }) {
         setPrimaryGoal((clientDetails?.primaryGoal as (typeof goals)[number]['value']) ?? 'fitness');
         setTimezone(clientDetails?.timezone ?? 'Asia/Kolkata');
         setPreferredLanguage(clientDetails?.preferredLanguage ?? 'en');
-        setNotice('');
       })
       .catch((error) => {
         if (!mounted) return;
-        setNotice(error instanceof Error ? error.message : 'Unable to load latest profile right now.');
+        notifyError(error, 'Unable to load latest profile right now.');
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -91,7 +89,7 @@ export default function ProfilePage({ role }: { role: Role }) {
     const data = await updateAccountAvatarRequest(file);
     setUser(data.user);
     setRoleDetails(data.roleDetails);
-    setNotice(data.message);
+    notifySuccess(data.message);
   }
 
   return (
@@ -113,8 +111,6 @@ export default function ProfilePage({ role }: { role: Role }) {
         </div>
       </header>
 
-      {notice ? <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
-
       <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <div className="space-y-6">
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -129,7 +125,6 @@ export default function ProfilePage({ role }: { role: Role }) {
               onSubmit={async (event) => {
                 event.preventDefault();
                 setSaving(true);
-                setNotice('');
                 try {
                   const data = await updateAccountProfileRequest({
                     name,
@@ -145,9 +140,9 @@ export default function ProfilePage({ role }: { role: Role }) {
                   });
                   setUser(data.user);
                   setRoleDetails(data.roleDetails);
-                  setNotice(data.message);
+                  notifySuccess(data.message);
                 } catch (error) {
-                  setNotice(error instanceof Error ? error.message : 'Profile update failed.');
+                  notifyError(error, 'Profile update failed.');
                 } finally {
                   setSaving(false);
                 }
@@ -214,9 +209,8 @@ export default function ProfilePage({ role }: { role: Role }) {
               className="mt-6 grid gap-4"
               onSubmit={async (event) => {
                 event.preventDefault();
-                setPasswordNotice('');
                 if (newPassword !== confirmPassword) {
-                  setPasswordNotice('New password and confirm password do not match.');
+                  toast.error('New password and confirm password do not match.');
                   return;
                 }
                 setPasswordSaving(true);
@@ -226,12 +220,12 @@ export default function ProfilePage({ role }: { role: Role }) {
                     password: newPassword,
                     password_confirmation: confirmPassword,
                   });
-                  setPasswordNotice(message);
+                  notifySuccess(message);
                   setCurrentPassword('');
                   setNewPassword('');
                   setConfirmPassword('');
                 } catch (error) {
-                  setPasswordNotice(error instanceof Error ? error.message : 'Password update failed.');
+                  notifyError(error, 'Password update failed.');
                 } finally {
                   setPasswordSaving(false);
                 }
@@ -251,8 +245,6 @@ export default function ProfilePage({ role }: { role: Role }) {
                   <input className="rounded-2xl border border-slate-300 px-4 py-3" type="password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
                 </label>
               </div>
-
-              {passwordNotice ? <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{passwordNotice}</p> : null}
 
               <button
                 type="submit"

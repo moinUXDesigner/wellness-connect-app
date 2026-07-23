@@ -61,6 +61,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
+import { notifyError, notifySuccess, toast } from '../shared/lib/toast';
 
 const roleCopy: Record<Role, { title: string; description: string; empty: string }> = {
   admin: {
@@ -116,7 +117,6 @@ type NotificationData = {
 };
 
 type StandardFilterKey = 'all' | 'unread' | 'read';
-type NoticeState = { tone: 'success' | 'error'; text: string } | null;
 
 const adminFilters: Array<{ key: AdminNotificationFilter; label: string }> = [
   { key: 'all', label: 'All' },
@@ -149,22 +149,6 @@ const quickActions = [
     to: '/admin/workflows',
   },
 ];
-
-function NoticeBanner({ notice }: { notice: NoticeState }) {
-  if (!notice) return null;
-
-  return (
-    <div
-      className={`rounded-2xl border px-4 py-3 text-sm ${
-        notice.tone === 'error'
-          ? 'border-rose-200 bg-rose-50 text-rose-700'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      }`}
-    >
-      {notice.text}
-    </div>
-  );
-}
 
 type ClientNotificationCategory = 'all' | 'appointments' | 'messages' | 'membership' | 'billing' | 'reminders';
 type ClientNotificationSort = 'newest' | 'oldest';
@@ -319,41 +303,9 @@ const counsellorFilterTabs: Array<{ key: CounsellorNotificationFilter; label: st
   { key: 'system', label: 'System' },
 ];
 
-function CounsellorNoticeSnackbar({ notice, onClose }: { notice: NoticeState; onClose: () => void }) {
-  useEffect(() => {
-    if (!notice) return undefined;
-    const timer = window.setTimeout(onClose, 4000);
-    return () => window.clearTimeout(timer);
-  }, [notice, onClose]);
-
-  if (!notice) return null;
-
-  const success = notice.tone === 'success';
-
-  return (
-    <div className="fixed right-5 top-5 z-[80] w-[min(calc(100vw-2rem),420px)]">
-      <div
-        role={success ? 'status' : 'alert'}
-        className={`flex items-start gap-3 rounded-2xl border bg-white px-4 py-3 text-sm shadow-2xl shadow-slate-900/10 ${
-          success ? 'border-emerald-200 text-emerald-800' : 'border-rose-200 text-rose-800'
-        }`}
-      >
-        <span className={`mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ${success ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-          {success ? <CheckCheck size={18} /> : <AlertTriangle size={18} />}
-        </span>
-        <p className="min-w-0 flex-1 py-1 font-semibold leading-5">{notice.text}</p>
-        <button type="button" aria-label="Close notification" onClick={onClose} className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function CounsellorNotificationsActionCenter({
   data,
   loading,
-  notice,
   filter,
   search,
   markAllPending,
@@ -362,11 +314,9 @@ function CounsellorNotificationsActionCenter({
   onMarkAllRead,
   onToggleRead,
   onOpenAction,
-  onCloseNotice,
 }: {
   data: CounsellorNotificationsResponse | null;
   loading: boolean;
-  notice: NoticeState;
   filter: CounsellorNotificationFilter;
   search: string;
   markAllPending: boolean;
@@ -375,7 +325,6 @@ function CounsellorNotificationsActionCenter({
   onMarkAllRead: () => Promise<void>;
   onToggleRead: (item: CounsellorNotificationItem) => Promise<void>;
   onOpenAction: (path: string) => void;
-  onCloseNotice: () => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -404,8 +353,6 @@ function CounsellorNotificationsActionCenter({
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 pb-6">
-      <CounsellorNoticeSnackbar notice={notice} onClose={onCloseNotice} />
-
       <header className="flex flex-col gap-4 rounded-3xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-violet-700">Counsellor Action Center</p>
@@ -667,7 +614,6 @@ function labelFromNotificationValue(value: string) {
 function StandardNotificationsPage({
   data,
   loading,
-  notice,
   filter,
   sort,
   search,
@@ -681,7 +627,6 @@ function StandardNotificationsPage({
 }: {
   data: NotificationData | null;
   loading: boolean;
-  notice: NoticeState;
   filter: StandardFilterKey | ClientNotificationCategory;
   sort: ClientNotificationSort;
   search: string;
@@ -744,8 +689,6 @@ function StandardNotificationsPage({
         <h1 className="mt-1 text-[30px] font-semibold leading-tight text-slate-950">{copy.title}</h1>
         <p className="mt-2 text-base font-medium text-slate-500">{copy.description}</p>
       </header>
-
-      <NoticeBanner notice={notice} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div>
@@ -1010,7 +953,6 @@ function OverviewCard({
 function AdminNotificationsPage({
   data,
   loading,
-  notice,
   filter,
   sort,
   search,
@@ -1026,7 +968,6 @@ function AdminNotificationsPage({
 }: {
   data: NotificationData | null;
   loading: boolean;
-  notice: NoticeState;
   filter: AdminNotificationFilter;
   sort: AdminNotificationSort;
   search: string;
@@ -1092,8 +1033,6 @@ function AdminNotificationsPage({
           </div>
         </div>
       </section>
-
-      <NoticeBanner notice={notice} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
@@ -1369,7 +1308,6 @@ export default function NotificationsPage({ role }: { role: Role }) {
   const [data, setData] = useState<NotificationData | null>(null);
   const [counsellorData, setCounsellorData] = useState<CounsellorNotificationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState<NoticeState>(null);
   const [standardFilter, setStandardFilter] = useState<StandardFilterKey | ClientNotificationCategory>('all');
   const [standardSort, setStandardSort] = useState<ClientNotificationSort>('newest');
   const [standardSearch, setStandardSearch] = useState('');
@@ -1389,12 +1327,8 @@ export default function NotificationsPage({ role }: { role: Role }) {
       } else {
         setData(await getNotifications());
       }
-      setNotice(null);
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Unable to load notifications.',
-      });
+      notifyError(error, 'Unable to load notifications.');
     } finally {
       setLoading(false);
     }
@@ -1410,15 +1344,9 @@ export default function NotificationsPage({ role }: { role: Role }) {
       await updateNotification(notification.id, !notification.read);
       await refresh();
       notifyUnreadCountChanged();
-      setNotice({
-        tone: 'success',
-        text: notification.read ? 'Notification marked as unread.' : 'Notification marked as read.',
-      });
+      notifySuccess(notification.read ? 'Notification marked as unread.' : 'Notification marked as read.');
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Unable to update notification.',
-      });
+      notifyError(error, 'Unable to update notification.');
     } finally {
       setActingNotificationId(null);
     }
@@ -1430,15 +1358,9 @@ export default function NotificationsPage({ role }: { role: Role }) {
       const result = await markAllNotificationsRead();
       await refresh();
       notifyUnreadCountChanged();
-      setNotice({
-        tone: 'success',
-        text: result.message,
-      });
+      notifySuccess(result.message);
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Unable to update notifications.',
-      });
+      notifyError(error, 'Unable to update notifications.');
     } finally {
       setMarkAllPending(false);
     }
@@ -1452,15 +1374,9 @@ export default function NotificationsPage({ role }: { role: Role }) {
       await updateNotification(item.notificationId, !item.read);
       await refresh();
       notifyUnreadCountChanged();
-      setNotice({
-        tone: 'success',
-        text: item.read ? 'Notification marked as unread.' : 'Notification marked as read.',
-      });
+      notifySuccess(item.read ? 'Notification marked as unread.' : 'Notification marked as read.');
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Unable to update notification.',
-      });
+      notifyError(error, 'Unable to update notification.');
     } finally {
       setActingNotificationId(null);
     }
@@ -1469,24 +1385,15 @@ export default function NotificationsPage({ role }: { role: Role }) {
   async function handleCopySummary(item: AdminNotificationViewModel) {
     const summary = `${item.title}: ${item.message} (${item.entityName} | ${item.timeLabel} ${item.dateLabel})`;
     if (!navigator.clipboard?.writeText) {
-      setNotice({
-        tone: 'error',
-        text: 'Clipboard access is not available in this browser.',
-      });
+      toast.error('Clipboard access is not available in this browser.');
       return;
     }
 
     try {
       await navigator.clipboard.writeText(summary);
-      setNotice({
-        tone: 'success',
-        text: 'Notification summary copied.',
-      });
+      notifySuccess('Notification summary copied.');
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Unable to copy the notification summary.',
-      });
+      notifyError(error, 'Unable to copy the notification summary.');
     }
   }
 
@@ -1499,7 +1406,6 @@ export default function NotificationsPage({ role }: { role: Role }) {
       <CounsellorNotificationsActionCenter
         data={counsellorData}
         loading={loading}
-        notice={notice}
         filter={counsellorFilter}
         search={counsellorSearch}
         markAllPending={markAllPending}
@@ -1508,7 +1414,6 @@ export default function NotificationsPage({ role }: { role: Role }) {
         onMarkAllRead={handleMarkAllRead}
         onToggleRead={handleCounsellorToggleRead}
         onOpenAction={handleOpenRelatedPage}
-        onCloseNotice={() => setNotice(null)}
       />
     );
   }
@@ -1518,7 +1423,6 @@ export default function NotificationsPage({ role }: { role: Role }) {
       <StandardNotificationsPage
         data={data}
         loading={loading}
-        notice={notice}
         filter={standardFilter}
         sort={standardSort}
         search={standardSearch}
@@ -1537,7 +1441,6 @@ export default function NotificationsPage({ role }: { role: Role }) {
     <AdminNotificationsPage
       data={data}
       loading={loading}
-      notice={notice}
       filter={adminFilter}
       sort={adminSort}
       search={adminSearch}

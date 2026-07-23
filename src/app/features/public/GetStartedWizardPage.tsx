@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import OnboardingAnimation from '../../../components/onboarding/OnboardingAnimation';
 import { registerRequest } from '../shared/services/api';
 import { getPostAuthRedirectPath } from '../auth/roleRedirects';
+import { notifyError } from '../shared/lib/toast';
 
 type PrimaryGoal = 'fitness' | 'mental_health' | 'both';
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -102,7 +103,6 @@ export default function GetStartedWizardPage() {
   const [email, setEmail] = useState(draft.email ?? '');
   const [password, setPassword] = useState('');
   const [consent, setConsent] = useState(false);
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [postAuthPath, setPostAuthPath] = useState('/client/intake');
 
@@ -114,14 +114,12 @@ export default function GetStartedWizardPage() {
   }, [email, goalId, name, step]);
 
   function goBack() {
-    setNotice('');
     setStep((s) => (s - 1) as Step);
   }
 
   async function createAccount() {
     if (!selectedGoal) return;
     setLoading(true);
-    setNotice('');
     try {
       const user = await registerRequest({
         name,
@@ -135,7 +133,7 @@ export default function GetStartedWizardPage() {
       sessionStorage.removeItem(wizardDraftKey);
       setStep(6);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to create your account. Please try again.');
+      notifyError(error, 'Unable to create your account. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -322,9 +320,6 @@ export default function GetStartedWizardPage() {
                 <Link to="/privacy-policy" className="underline hover:text-slate-800">Privacy Policy</Link>.
               </span>
             </label>
-            {notice && (
-              <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{notice}</p>
-            )}
             <button
               onClick={createAccount}
               disabled={!consent || loading}

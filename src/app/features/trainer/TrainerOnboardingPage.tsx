@@ -98,6 +98,7 @@ import {
 } from './trainerApplicationsApi';
 import { setCachedTrainerAccessStateFromApplication } from './trainerAccess';
 import { lookupStateForCity } from './data/indiaCityState';
+import { notifyError } from '../shared/lib/toast';
 import { useGoogleIdentity } from './useGoogleIdentity';
 
 const reviewScreenIndex = trainerOnboardingScreens.findIndex((screen) => screen.id === 'review');
@@ -490,6 +491,7 @@ export default function TrainerOnboardingPage() {
         setAdminRemarks(application.adminRemarks);
         setReviewHistory(application.reviewHistory);
         setSubmitted(false);
+        setSubmittedAt(application.submittedAt || null);
         setScreenIndex(nextIndex >= 0 ? nextIndex : 0);
         setSegmentIndex(0);
         setSavedAt(application.updatedAt);
@@ -1915,7 +1917,6 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   const [emailOtp, setEmailOtp] = useState('');
   const [emailChallenge, setEmailChallenge] = useState<TrainerEmailOtpChallenge | null>(null);
 
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [clock, setClock] = useState(Date.now());
 
@@ -1928,12 +1929,11 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function handleGoogleCredential(idToken: string) {
     if (!verifiedChallengeToken) return;
     setLoading(true);
-    setNotice('');
     try {
       await registerTrainerWithGoogle({ challengeToken: verifiedChallengeToken, idToken });
       onCreated();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to continue with Google.');
+      notifyError(error, 'Unable to continue with Google.');
     } finally {
       setLoading(false);
     }
@@ -2019,14 +2019,13 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
 
   async function sendMobileOtp() {
     setLoading(true);
-    setNotice('');
     try {
       const nextChallenge = await requestTrainerMobileOtp({ mobile, consent_to_terms: consent });
       setMobileChallenge(nextChallenge);
       setMobileOtp('');
       setScreen('mobileOtp');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to send a verification code.');
+      notifyError(error, 'Unable to send a verification code.');
     } finally {
       setLoading(false);
     }
@@ -2035,14 +2034,13 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function verifyMobileOtpAndContinue() {
     if (!mobileChallenge) return;
     setLoading(true);
-    setNotice('');
     try {
       const result = await verifyTrainerMobileOtp({ challengeToken: mobileChallenge.challengeToken, otp: mobileOtp });
       setVerifiedChallengeToken(result.challengeToken);
       setProfileStep('name');
       setScreen('profile');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to verify your mobile number.');
+      notifyError(error, 'Unable to verify your mobile number.');
     } finally {
       setLoading(false);
     }
@@ -2051,14 +2049,13 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function resendMobileOtp() {
     if (!mobileChallenge) return;
     setLoading(true);
-    setNotice('');
     try {
       const nextChallenge = await resendTrainerMobileOtp(mobileChallenge.challengeToken);
       setMobileChallenge(nextChallenge);
       setMobileOtp('');
       setClock(Date.now());
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to resend a verification code.');
+      notifyError(error, 'Unable to resend a verification code.');
     } finally {
       setLoading(false);
     }
@@ -2067,14 +2064,13 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function submitProfile() {
     if (!verifiedChallengeToken) return;
     setLoading(true);
-    setNotice('');
     try {
       const nextChallenge = await requestTrainerEmailOtp({ challengeToken: verifiedChallengeToken, name, email, password });
       setEmailChallenge(nextChallenge);
       setEmailOtp('');
       setScreen('emailOtp');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to send a verification code.');
+      notifyError(error, 'Unable to send a verification code.');
     } finally {
       setLoading(false);
     }
@@ -2083,12 +2079,11 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function verifyEmailOtpAndFinish() {
     if (!verifiedChallengeToken) return;
     setLoading(true);
-    setNotice('');
     try {
       await verifyTrainerEmailOtp({ challengeToken: verifiedChallengeToken, otp: emailOtp });
       onCreated();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to verify your email address.');
+      notifyError(error, 'Unable to verify your email address.');
     } finally {
       setLoading(false);
     }
@@ -2097,14 +2092,13 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
   async function resendEmailOtp() {
     if (!verifiedChallengeToken) return;
     setLoading(true);
-    setNotice('');
     try {
       const nextChallenge = await resendTrainerEmailOtp(verifiedChallengeToken);
       setEmailChallenge(nextChallenge);
       setEmailOtp('');
       setClock(Date.now());
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to resend a verification code.');
+      notifyError(error, 'Unable to resend a verification code.');
     } finally {
       setLoading(false);
     }
@@ -2293,7 +2287,6 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                             type="button"
                             onClick={() => {
                               setScreen('mobile');
-                              setNotice('');
                             }}
                             className="font-semibold text-[#6b7298] transition hover:text-[#182062]"
                           >
@@ -2442,7 +2435,6 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                             type="button"
                             onClick={() => {
                               setScreen('profile');
-                              setNotice('');
                             }}
                             className="font-semibold text-[#6b7298] transition hover:text-[#182062]"
                           >
@@ -2463,11 +2455,6 @@ function TrainerApplicantAccessPage({ onCreated }: { onCreated: () => void }) {
                     </>
                   )}
 
-                  {notice ? (
-                    <p className="mt-6 rounded-[18px] border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-                      {notice}
-                    </p>
-                  ) : null}
 
                   <div className="mt-4 sm:mt-5 short:lg:mt-4">
                     <Button
@@ -2553,20 +2540,20 @@ function TrainerWelcomeScreen({
         <div className="grid min-h-0 flex-1 lg:auto-rows-fr lg:grid-cols-2">
           {/* Same hero sizing contract as the public account screen: image first, compact copy below. */}
           <section
-            className="relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 shorter:h-[28dvh] shorter:min-h-[185px] short:lg:py-3"
+            className="relative flex h-[30dvh] min-h-[205px] max-h-[250px] shrink-0 overflow-hidden border-b border-[#ebe6fb] px-4 py-2.5 sm:h-[44dvh] sm:min-h-[320px] sm:max-h-[430px] sm:py-3 lg:h-auto lg:min-h-0 lg:max-h-none lg:border-b-0 lg:border-r lg:px-5 lg:py-4 xl:px-8 max-lg:shorter:h-[28dvh] max-lg:shorter:min-h-[185px] short:lg:py-3"
             style={{ background: trainerEntryHeroBackground }}
           >
-            <div className="relative mx-auto flex h-full w-full max-w-[720px] flex-col justify-center">
-              <div className="relative mx-auto flex w-full max-w-[620px] items-center justify-center lg:h-[300px] xl:h-[360px] short:lg:h-[250px]">
+            <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[720px] flex-col justify-center">
+              <div className="relative mx-auto flex w-full min-h-0 max-w-[680px] items-center justify-center lg:h-[min(360px,36dvh)] xl:h-[min(420px,40dvh)] short:lg:h-[min(230px,26dvh)] shorter:lg:h-[min(190px,22dvh)] shortest:lg:h-[min(150px,18dvh)]">
                 <img
                   src={trainerWelcomeIllustration}
                   alt="Trainer onboarding welcome illustration"
-                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full shorter:max-h-[13dvh]"
+                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full max-lg:shorter:max-h-[13dvh]"
                 />
               </div>
 
-              <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-2">
-                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] short:lg:text-[1.55rem]">
+              <div className="mx-auto mt-0.5 max-w-[580px] shrink-0 text-center sm:mt-2">
+                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] short:lg:text-[1.55rem] shorter:lg:text-[1.3rem]">
                   Let&apos;s begin your trainer journey
                 </h2>
                 <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] short:lg:line-clamp-2">
@@ -2574,7 +2561,7 @@ function TrainerWelcomeScreen({
                 </p>
               </div>
 
-              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2">
+              <div className="mx-auto mt-3 hidden w-full max-w-[720px] shrink-0 gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2 shortest:lg:hidden">
                 {trainerWelcomeHighlights.map(({ title, description, icon: Icon }) => (
                   <div
                     key={title}
@@ -2758,27 +2745,27 @@ function TrainerApplicationScreenShell({
           <section
            
           >
-            <div className="relative mx-auto flex h-full w-full max-w-[700px] flex-col justify-center">
-              <div className="relative mx-auto flex w-full max-w-[600px] items-center justify-center lg:h-[280px] xl:h-[340px] short:lg:h-[230px]">
+            <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[720px] flex-col justify-center">
+              <div className="relative mx-auto flex w-full min-h-0 max-w-[680px] items-center justify-center lg:h-[min(360px,36dvh)] xl:h-[min(420px,40dvh)] short:lg:h-[min(230px,26dvh)] shorter:lg:h-[min(190px,22dvh)] shortest:lg:h-[min(150px,18dvh)]">
                 <img
                   src={trainerWelcomeIllustration}
                   alt="Trainer onboarding illustration"
-                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full shorter:max-h-[13dvh]"
+                  className="mx-auto h-auto max-h-[14dvh] w-full max-w-[420px] object-contain sm:max-h-[25dvh] sm:max-w-[520px] lg:h-full lg:max-h-full lg:w-auto lg:max-w-full max-lg:shorter:max-h-[13dvh]"
                 />
               </div>
 
               <div className="mx-auto mt-0.5 max-w-[580px] text-center sm:mt-2">
-                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.55rem] xl:text-[2.1rem] short:lg:text-[1.45rem]">
+                <h2 className="text-[1.12rem] font-bold leading-[1.04] tracking-[-0.02em] text-[#12186d] sm:text-[1.55rem] sm:tracking-[-0.035em] lg:text-[1.65rem] xl:text-[2.2rem] short:lg:text-[1.55rem] shorter:lg:text-[1.3rem]">
                   {screen.id === 'success' ? 'Your trainer application is in' : "Let's build your trainer profile"}
                 </h2>
-                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.88rem] xl:text-[0.96rem] short:lg:line-clamp-2">
+                <p className="mx-auto mt-1 max-w-[520px] text-[0.74rem] font-medium leading-4 text-[#5b6697] sm:mt-1.5 sm:text-[0.9rem] sm:leading-5 lg:text-[0.9rem] xl:text-[0.98rem] short:lg:line-clamp-2">
                   {screen.id === 'success'
                     ? 'You&apos;re all set. Our team will review your details and guide you through the next step shortly.'
                     : 'Complete each step to create a polished and trustworthy profile clients can understand quickly.'}
                 </p>
               </div>
 
-              <div className="mx-auto mt-3 hidden w-full max-w-[700px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2">
+              <div className="mx-auto mt-3 hidden w-full max-w-[720px] gap-2 lg:grid lg:grid-cols-3 xl:mt-4 short:lg:mt-2 shortest:lg:hidden">
                 {trainerWelcomeHighlights.map(({ title, description, icon: Icon }) => (
                   <div
                     key={title}

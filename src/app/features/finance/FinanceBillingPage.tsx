@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getFinanceBilling, refundPayment, type FinanceSummary } from '../shared/services/membershipApi';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 function inr(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount / 100);
@@ -11,22 +12,20 @@ export default function FinanceBillingPage() {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('client_request');
   const [reason, setReason] = useState('');
-  const [notice, setNotice] = useState('');
   async function refresh() {
     setData(await getFinanceBilling());
   }
-  useEffect(() => { refresh().catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to load billing data.')); }, []);
+  useEffect(() => { refresh().catch((error) => notifyError(error, 'Unable to load billing data.')); }, []);
   async function submitRefund() {
     if (!selected) return;
     try {
       const result = await refundPayment(selected.id, Math.round(Number(amount) * 100), category, reason.trim());
-      setNotice(result.message); setSelected(null); setAmount(''); setReason(''); await refresh();
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'Refund failed.'); }
+      notifySuccess(result.message); setSelected(null); setAmount(''); setReason(''); await refresh();
+    } catch (error) { notifyError(error, 'Refund failed.'); }
   }
   return (
     <div className="space-y-6">
       <div><h1 className="text-2xl font-semibold text-slate-900">Billing & Receipts</h1><p className="mt-1 text-sm text-slate-600">Captured payments, deferred revenue, receipts, and controlled refunds.</p></div>
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       {!data ? <div className="h-32 animate-pulse rounded-xl bg-slate-100" /> : <>
         <section className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {[['Captured', inr(data.summary.capturedMinor)], ['Refunded', inr(data.summary.refundedMinor)], ['Deferred', inr(data.summary.deferredMinor)], ['Earned', inr(data.summary.earnedMinor)], ['Active plans', String(data.summary.activeMemberships)]].map(([label, value]) => (

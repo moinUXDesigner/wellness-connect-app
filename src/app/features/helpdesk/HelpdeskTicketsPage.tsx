@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Panel, ToneBadge } from '../shared/components/Ui';
 import { getHelpdeskWorkflowCases, updateWorkflowCase, type WorkflowCase, type WorkflowCaseAction } from '../shared/services/adminApi';
+import { notifyError, notifySuccess } from '../shared/lib/toast';
 
 function priorityTone(priority: WorkflowCase['priority']) {
   return priority === 'high' ? 'danger' : priority === 'medium' ? 'warning' : 'neutral';
@@ -23,7 +24,6 @@ function formatTimestamp(value: string | null) {
 export default function HelpdeskTicketsPage() {
   const [cases, setCases] = useState<WorkflowCase[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
   const [actingCaseId, setActingCaseId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function HelpdeskTicketsPage() {
     try {
       setCases(await getHelpdeskWorkflowCases());
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to load helpdesk tickets.');
+      notifyError(error, 'Unable to load helpdesk tickets.');
     } finally {
       setLoading(false);
     }
@@ -43,16 +43,15 @@ export default function HelpdeskTicketsPage() {
 
   async function actOnCase(workflowCase: WorkflowCase, action: WorkflowCaseAction) {
     setActingCaseId(workflowCase.id);
-    setNotice('');
 
     try {
       const result = await updateWorkflowCase(workflowCase.id, action);
       setCases((current) => current.map((item) => (
         item.id === workflowCase.id ? result.case : item
       )));
-      setNotice(result.message);
+      notifySuccess(result.message);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to update helpdesk ticket.');
+      notifyError(error, 'Unable to update helpdesk ticket.');
     } finally {
       setActingCaseId(null);
     }
@@ -64,7 +63,6 @@ export default function HelpdeskTicketsPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Helpdesk Tickets</h1>
         <p className="mt-1 text-sm text-slate-600">Live support requests tracked against the follow-up SLA workflow.</p>
       </div>
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       <Panel title="Support queue">
         <div className="space-y-4">
           {loading ? (

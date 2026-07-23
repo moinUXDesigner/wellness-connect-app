@@ -11,6 +11,7 @@ import {
   type ProgramDraft,
   type ProgramVersion,
 } from '../../shared/services/programManagementApi';
+import { notifyError, notifySuccess } from '../../shared/lib/toast';
 
 const EMPTY_DRAFT: ProgramDraft = {
   name: '',
@@ -54,8 +55,6 @@ function totalCredits(program: AdminProgram) {
 export default function ProgramManagementPage() {
   const [programs, setPrograms] = useState<AdminProgram[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [publishingId, setPublishingId] = useState<number | null>(null);
   const [archivingId, setArchivingId] = useState<number | null>(null);
@@ -69,7 +68,6 @@ export default function ProgramManagementPage() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError('');
 
     getAdminPrograms()
       .then((items) => {
@@ -78,7 +76,7 @@ export default function ProgramManagementPage() {
       })
       .catch((nextError) => {
         if (!active) return;
-        setError(nextError instanceof Error ? nextError.message : 'Unable to load programs.');
+        notifyError(nextError, 'Unable to load programs.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -100,8 +98,6 @@ export default function ProgramManagementPage() {
   function openCreateEditor() {
     setSelectedProgram(null);
     setDraft(EMPTY_DRAFT);
-    setNotice('');
-    setError('');
     setEditorOpen(true);
   }
 
@@ -116,25 +112,21 @@ export default function ProgramManagementPage() {
         training: program.latestVersion?.credits.training ?? program.credits.training,
       },
     });
-    setNotice('');
-    setError('');
     setEditorOpen(true);
   }
 
   async function submitDraft() {
     setSaving(true);
-    setNotice('');
-    setError('');
 
     try {
       const response = await saveAdminProgram(draft, selectedProgram?.id);
       upsertProgram(response.program);
-      setNotice(response.message);
+      notifySuccess(response.message);
       setEditorOpen(false);
       setSelectedProgram(null);
       setDraft(EMPTY_DRAFT);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to save program draft.');
+      notifyError(nextError, 'Unable to save program draft.');
     } finally {
       setSaving(false);
     }
@@ -142,15 +134,13 @@ export default function ProgramManagementPage() {
 
   async function publishProgram(program: AdminProgram) {
     setPublishingId(program.id);
-    setNotice('');
-    setError('');
 
     try {
       const response = await publishAdminProgram(program.id);
       upsertProgram(response.program);
-      setNotice(response.message);
+      notifySuccess(response.message);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to publish program.');
+      notifyError(nextError, 'Unable to publish program.');
     } finally {
       setPublishingId(null);
     }
@@ -158,15 +148,13 @@ export default function ProgramManagementPage() {
 
   async function archiveProgram(program: AdminProgram) {
     setArchivingId(program.id);
-    setNotice('');
-    setError('');
 
     try {
       const response = await archiveAdminProgram(program.id);
       upsertProgram(response.program);
-      setNotice(response.message);
+      notifySuccess(response.message);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to archive program.');
+      notifyError(nextError, 'Unable to archive program.');
     } finally {
       setArchivingId(null);
     }
@@ -176,12 +164,11 @@ export default function ProgramManagementPage() {
     setSelectedProgram(program);
     setVersionsOpen(true);
     setVersionsLoading(true);
-    setError('');
 
     try {
       setVersions(await getAdminProgramVersions(program.id));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load version history.');
+      notifyError(nextError, 'Unable to load version history.');
       setVersions([]);
     } finally {
       setVersionsLoading(false);
@@ -193,9 +180,6 @@ export default function ProgramManagementPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Program Management" subtitle="Manage wellness programs and lifecycle status." />
-
-      {notice ? <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p> : null}
-      {error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total Programs" value={String(stats.total)} hint="All catalog entries across every lifecycle state." />

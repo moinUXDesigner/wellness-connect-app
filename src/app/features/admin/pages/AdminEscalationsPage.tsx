@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageTitle } from '../AdminLayout';
 import { Panel, ToneBadge } from '../../shared/components/Ui';
 import { getAdminWorkflowCases, updateWorkflowCase, type WorkflowCase, type WorkflowCaseAction } from '../../shared/services/adminApi';
+import { notifyError, notifySuccess } from '../../shared/lib/toast';
 
 function priorityTone(priority: WorkflowCase['priority']) {
   return priority === 'high' ? 'danger' : priority === 'medium' ? 'warning' : 'neutral';
@@ -24,7 +25,6 @@ function formatTimestamp(value: string | null) {
 export default function AdminEscalationsPage() {
   const [cases, setCases] = useState<WorkflowCase[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
   const [actingCaseId, setActingCaseId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function AdminEscalationsPage() {
     try {
       setCases(await getAdminWorkflowCases({ workflowKey: 'critical_risk_escalation' }));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to load escalation cases.');
+      notifyError(error, 'Unable to load escalation cases.');
     } finally {
       setLoading(false);
     }
@@ -44,16 +44,15 @@ export default function AdminEscalationsPage() {
 
   async function actOnCase(workflowCase: WorkflowCase, action: WorkflowCaseAction) {
     setActingCaseId(workflowCase.id);
-    setNotice('');
 
     try {
       const result = await updateWorkflowCase(workflowCase.id, action);
       setCases((current) => current.map((item) => (
         item.id === workflowCase.id ? result.case : item
       )));
-      setNotice(result.message);
+      notifySuccess(result.message);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to update escalation case.');
+      notifyError(error, 'Unable to update escalation case.');
     } finally {
       setActingCaseId(null);
     }
@@ -62,7 +61,6 @@ export default function AdminEscalationsPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Escalations" subtitle="High-risk intake cases that require admin acknowledgement and resolution." />
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       <Panel title="Escalation queue">
         <div className="space-y-4">
           {loading ? (

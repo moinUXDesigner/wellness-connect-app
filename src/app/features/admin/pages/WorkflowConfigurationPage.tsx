@@ -12,6 +12,7 @@ import {
   type WorkflowConfigSummary,
   type WorkflowKey,
 } from '../../shared/services/adminApi';
+import { notifyError, notifySuccess } from '../../shared/lib/toast';
 
 const WORKFLOW_KEYS: WorkflowKey[] = [
   'intake_assignment',
@@ -38,7 +39,6 @@ export default function WorkflowConfigurationPage() {
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<WorkflowKey | null>(null);
-  const [notice, setNotice] = useState('');
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
@@ -72,7 +72,6 @@ export default function WorkflowConfigurationPage() {
 
   async function saveWorkflow(workflow: WorkflowConfigSummary) {
     setSavingKey(workflow.key);
-    setNotice('');
 
     try {
       const result = await updateAdminWorkflow(workflow.key, workflow.config, reasons[workflow.key]);
@@ -80,9 +79,9 @@ export default function WorkflowConfigurationPage() {
         item.key === workflow.key ? result.workflow : item
       )));
       setReasons((current) => ({ ...current, [workflow.key]: '' }));
-      setNotice(result.message);
+      notifySuccess(result.message);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to update workflow.');
+      notifyError(error, 'Unable to update workflow.');
     } finally {
       setSavingKey(null);
     }
@@ -91,7 +90,6 @@ export default function WorkflowConfigurationPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Workflow Configuration" subtitle="Operational flows for booking, escalation, and follow-ups." />
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       {loadError ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{loadError}</p> : null}
       {loading ? (
         <div className="grid gap-4 xl:grid-cols-2">

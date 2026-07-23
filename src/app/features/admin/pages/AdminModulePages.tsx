@@ -16,6 +16,7 @@ import {
 } from '../../trainer/trainerOnboarding';
 import { fetchAdminTrainerApplicationsFromApi, updateTrainerApplicationReviewInApi } from '../../trainer/trainerApplicationsApi';
 import RefinedUserManagementPage from './UserManagementPage';
+import { toast, notifyError, notifySuccess } from '../../shared/lib/toast';
 
 const roleOptions: Role[] = ['admin', 'client', 'counsellor', 'trainer', 'coach', 'helpdesk', 'finance', 'legal', 'content'];
 const assignableRoles: Role[] = ['client', 'trainer', 'helpdesk', 'admin', 'finance', 'legal', 'content'];
@@ -41,7 +42,6 @@ export function RoleManagementPage() {
   const [audits, setAudits] = useState<RoleChangeAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [notice, setNotice] = useState('');
   const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all');
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState<UserSummary | null>(null);
@@ -98,13 +98,11 @@ export function RoleManagementPage() {
     setEditingUser(user);
     setNextRole(user.role === 'client' ? 'helpdesk' : 'client');
     setReason('');
-    setNotice('');
   }
 
   async function saveRoleChange() {
     if (!editingUser || saving) return;
     setSaving(true);
-    setNotice('');
 
     try {
       const result = await adminUpdateUserRole(editingUser.id, nextRole, reason.trim());
@@ -113,11 +111,11 @@ export function RoleManagementPage() {
         navigate('/login', { replace: true, state: { authNotice: 'Your role was updated. Please sign in again to continue.' } });
         return;
       }
-      setNotice(result.message);
+      notifySuccess(result.message);
       setEditingUser(null);
       setReloadCount((count) => count + 1);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to update user role.');
+      notifyError(error, 'Unable to update user role.');
     } finally {
       setSaving(false);
     }
@@ -126,7 +124,6 @@ export function RoleManagementPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Role Management" subtitle="Assign workspace access with approval and audit controls." />
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       {loadError ? (
         <section role="alert" className="flex flex-col gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-900 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -242,7 +239,6 @@ export function RoleManagementPage() {
             <p className="mt-2 text-xs text-slate-500">Trainer assignment is allowed only after approved trainer onboarding. User sessions will be signed out after a change.</p>
             <label className="mt-5 block text-sm font-medium text-slate-700">Reason for change</label>
             <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={500} required placeholder="Describe why access is being changed" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-            {notice ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{notice}</p> : null}
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" disabled={saving} onClick={() => setEditingUser(null)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
               <button type="button" disabled={saving || !reason.trim() || nextRole === editingUser.role} onClick={() => void saveRoleChange()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving...' : 'Confirm Role Change'}</button>
@@ -263,7 +259,6 @@ export function PermissionMatrixPage() {
   const [draftKeys, setDraftKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [notice, setNotice] = useState('');
   const [reason, setReason] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -298,7 +293,6 @@ export function PermissionMatrixPage() {
 
   useEffect(() => {
     setDraftKeys(grants[selectedRole] ?? []);
-    setNotice('');
   }, [grants, selectedRole]);
 
   const baselineKeys = grants[selectedRole] ?? [];
@@ -323,16 +317,15 @@ export function PermissionMatrixPage() {
   async function savePermissions() {
     if (!reason.trim() || !changed || saving || selectedRole === 'admin') return;
     setSaving(true);
-    setNotice('');
 
     try {
       const result = await adminUpdatePermissions(selectedRole, draftKeys, reason.trim());
-      setNotice(result.message);
+      notifySuccess(result.message);
       setConfirming(false);
       setReason('');
       setReloadCount((count) => count + 1);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to save permissions.');
+      notifyError(error, 'Unable to save permissions.');
     } finally {
       setSaving(false);
     }
@@ -341,7 +334,6 @@ export function PermissionMatrixPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Permission Matrix" subtitle="Control role access to supported modules and actions." />
-      {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
       {loadError ? (
         <section role="alert" className="flex flex-col gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -407,7 +399,7 @@ export function PermissionMatrixPage() {
           </table>
         </div>
         <div className="mt-5 flex justify-end">
-          <button type="button" onClick={() => { setReason(''); setConfirming(true); setNotice(''); }} disabled={!changed || selectedRole === 'admin'} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">Save Permission Changes</button>
+          <button type="button" onClick={() => { setReason(''); setConfirming(true); }} disabled={!changed || selectedRole === 'admin'} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">Save Permission Changes</button>
         </div>
       </Panel>
 
@@ -432,7 +424,6 @@ export function PermissionMatrixPage() {
             <p className="mt-2 text-sm text-slate-600">Changes to <span className="font-semibold capitalize">{selectedRole}</span> access apply immediately to active sessions.</p>
             <label className="mt-5 block text-sm font-medium text-slate-700">Reason for change</label>
             <textarea rows={3} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain why this permission update is needed" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-            {notice ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{notice}</p> : null}
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" disabled={saving} onClick={() => setConfirming(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button>
               <button type="button" disabled={saving || !reason.trim()} onClick={() => void savePermissions()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving...' : 'Confirm Changes'}</button>
@@ -463,8 +454,6 @@ export function TrainerApplicationsPage() {
   const [applications, setApplications] = useState<TrainerApplicationRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [remarks, setRemarks] = useState('');
-  const [feedbackError, setFeedbackError] = useState('');
-  const [decisionNotice, setDecisionNotice] = useState('');
   const [isSavingDecision, setIsSavingDecision] = useState(false);
 
   useEffect(() => {
@@ -499,8 +488,6 @@ export function TrainerApplicationsPage() {
 
   useEffect(() => {
     setRemarks(selectedApplication?.adminRemarks ?? '');
-    setFeedbackError('');
-    setDecisionNotice('');
   }, [selectedApplication]);
 
   const stats = useMemo(() => ({
@@ -515,7 +502,7 @@ export function TrainerApplicationsPage() {
 
     const trimmedRemarks = remarks.trim();
     if ((status === 'needs_resubmission' || status === 'rejected') && !trimmedRemarks) {
-      setFeedbackError(status === 'needs_resubmission' ? 'Add remarks so the trainer knows what to fix.' : 'Add a rejection reason before closing the application.');
+      toast.error(status === 'needs_resubmission' ? 'Add remarks so the trainer knows what to fix.' : 'Add a rejection reason before closing the application.');
       return;
     }
 
@@ -535,16 +522,15 @@ export function TrainerApplicationsPage() {
       );
       setSelectedId(nextApplication.applicationId);
       setRemarks(nextApplication.adminRemarks);
-      setFeedbackError('');
       if (status === 'approved' && result.account?.created && result.account.temporaryPassword) {
-        setDecisionNotice(`Trainer account created for ${result.account.email}. Temporary password: ${result.account.temporaryPassword}. Share it securely and ask the trainer to change it after signing in.`);
+        notifySuccess(`Trainer account created for ${result.account.email}. Temporary password: ${result.account.temporaryPassword}. Share it securely and ask the trainer to change it after signing in.`);
       } else if (status === 'approved' && result.account) {
-        setDecisionNotice(`Trainer account activated for ${result.account.email}. The trainer can now access the workspace with their existing password.`);
+        notifySuccess(`Trainer account activated for ${result.account.email}. The trainer can now access the workspace with their existing password.`);
       } else {
-        setDecisionNotice('Application status updated.');
+        notifySuccess('Application status updated.');
       }
     } catch (error) {
-      setFeedbackError(error instanceof Error ? error.message : 'Unable to update the trainer application.');
+      notifyError(error, 'Unable to update the trainer application.');
     } finally {
       setIsSavingDecision(false);
     }
@@ -604,7 +590,6 @@ export function TrainerApplicationsPage() {
   return (
     <div className="space-y-6">
       <PageTitle title="Trainer Applications" subtitle="Review trainer onboarding submissions, documents, demo videos, interviews, and approval decisions." />
-      {decisionNotice ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{decisionNotice}</p> : null}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Applications</p>
@@ -701,7 +686,6 @@ export function TrainerApplicationsPage() {
                     placeholder="Add review notes, missing items, approval notes, or rejection reasons."
                     className="mt-3 min-h-36 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-slate-400"
                   />
-                  {feedbackError ? <p className="mt-2 text-sm text-rose-600">{feedbackError}</p> : null}
                 </section>
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -962,14 +946,13 @@ export function MembershipPlanManagementPage() {
   const emptyDraft: PlanDraft = { name: '', description: '', duration_weeks: 4, credits: { counselling: 0, training: 0 }, tiers: [{ label: 'Standard', amount_minor: 0 }] };
   const [plans, setPlans] = useState<AdminMembershipPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
   const [editingId, setEditingId] = useState<number | undefined>();
   const [draft, setDraft] = useState<PlanDraft>(emptyDraft);
   const [showEditor, setShowEditor] = useState(false);
 
   async function refresh() {
     setLoading(true);
-    try { setPlans(await getAdminMembershipPlans()); } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to load membership plans.'); } finally { setLoading(false); }
+    try { setPlans(await getAdminMembershipPlans()); } catch (error) { notifyError(error, 'Unable to load membership plans.'); } finally { setLoading(false); }
   }
   useEffect(() => { void refresh(); }, []);
   function edit(plan?: AdminMembershipPlan) {
@@ -987,19 +970,18 @@ export function MembershipPlanManagementPage() {
   async function save() {
     try {
       const result = await saveAdminMembershipPlan(draft, editingId);
-      setNotice(result.message); setShowEditor(false); await refresh();
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to save membership draft.'); }
+      notifySuccess(result.message); setShowEditor(false); await refresh();
+    } catch (error) { notifyError(error, 'Unable to save membership draft.'); }
   }
   async function publish(id: number) {
-    try { setNotice((await publishAdminMembershipPlan(id)).message); await refresh(); } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to publish plan.'); }
+    try { notifySuccess((await publishAdminMembershipPlan(id)).message); await refresh(); } catch (error) { notifyError(error, 'Unable to publish plan.'); }
   }
   async function archive(id: number) {
-    try { setNotice((await archiveAdminMembershipPlan(id)).message); await refresh(); } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to archive plan.'); }
+    try { notifySuccess((await archiveAdminMembershipPlan(id)).message); await refresh(); } catch (error) { notifyError(error, 'Unable to archive plan.'); }
   }
 
   return <div className="space-y-6">
     <PageTitle title="Membership Plan Management" subtitle="Publish immutable plan terms and one-time INR price tiers." />
-    {notice ? <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{notice}</p> : null}
     <div className="flex justify-end"><button type="button" onClick={() => edit()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white">New Plan</button></div>
     <section className="grid gap-4 md:grid-cols-3">
       {loading ? Array.from({ length: 3 }).map((_, index) => <article key={index} className="h-52 animate-pulse rounded-2xl bg-slate-100" />) : plans.length ? plans.map((plan) => {

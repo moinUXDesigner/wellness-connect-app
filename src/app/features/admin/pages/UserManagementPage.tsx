@@ -48,9 +48,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu';
+import { notifyError, notifyInfo, notifySuccess, toast } from '../../shared/lib/toast';
 
-type NoticeTone = 'success' | 'error' | 'info';
-type NoticeState = { tone: NoticeTone; text: string } | null;
 type UserTab = 'all' | 'trainer' | 'client' | 'admin' | 'pending';
 type SortOrder = 'newest' | 'oldest';
 type RoleFilter = Role | 'all';
@@ -176,22 +175,6 @@ function buildUsersCsv(users: UserSummary[]) {
   ].map(csvCell).join(','));
 
   return [header, ...rows].join('\n');
-}
-
-function NoticeBanner({ notice }: { notice: NoticeState }) {
-  if (!notice) return null;
-
-  const toneClass = notice.tone === 'error'
-    ? 'border-rose-200 bg-rose-50 text-rose-700'
-    : notice.tone === 'info'
-      ? 'border-sky-200 bg-sky-50 text-sky-700'
-      : 'border-emerald-200 bg-emerald-50 text-emerald-700';
-
-  return (
-    <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>
-      {notice.text}
-    </div>
-  );
 }
 
 function MetricCard({ metric }: { metric: UserMetric }) {
@@ -329,7 +312,6 @@ export default function RefinedUserManagementPage() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState<NoticeState>(null);
   const [loadError, setLoadError] = useState('');
   const [reloadCount, setReloadCount] = useState(0);
   const [tab, setTab] = useState<UserTab>('all');
@@ -456,14 +438,13 @@ export default function RefinedUserManagementPage() {
 
   async function handlePasswordReset(user: UserSummary) {
     setResettingUserId(user.id);
-    setNotice(null);
     setBlockedDeletion(null);
 
     try {
       const message = await adminResetUserPassword(user);
-      setNotice({ tone: 'success', text: message });
+      notifySuccess(message);
     } catch (error) {
-      setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to reset password.' });
+      notifyError(error, 'Unable to reset password.');
     } finally {
       setResettingUserId(null);
     }
@@ -474,18 +455,17 @@ export default function RefinedUserManagementPage() {
 
     const user = deletingUser;
     setDeletingUserId(user.id);
-    setNotice(null);
     setBlockedDeletion(null);
 
     try {
       const message = await adminDeleteUser(user);
       setUsers((items) => items.filter((item) => item.id !== user.id));
-      setNotice({ tone: 'success', text: message });
+      notifySuccess(message);
     } catch (error) {
       if (error instanceof AdminUserDeletionError) {
         setBlockedDeletion({ user, message: error.message, blockers: error.blockers });
       } else {
-        setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete user.' });
+        notifyError(error, 'Unable to delete user.');
       }
     } finally {
       setDeletingUser(null);
@@ -495,21 +475,21 @@ export default function RefinedUserManagementPage() {
 
   async function handleCopyEmail(user: UserSummary) {
     if (!navigator.clipboard?.writeText) {
-      setNotice({ tone: 'error', text: 'Clipboard access is not available in this browser.' });
+      toast.error('Clipboard access is not available in this browser.');
       return;
     }
 
     try {
       await navigator.clipboard.writeText(user.email);
-      setNotice({ tone: 'success', text: `Copied ${user.email}.` });
+      notifySuccess(`Copied ${user.email}.`);
     } catch (error) {
-      setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to copy email.' });
+      notifyError(error, 'Unable to copy email.');
     }
   }
 
   function handleExport() {
     if (!filteredUsers.length) {
-      setNotice({ tone: 'info', text: 'No visible users to export right now.' });
+      notifyInfo('No visible users to export right now.');
       return;
     }
 
@@ -518,7 +498,7 @@ export default function RefinedUserManagementPage() {
       buildUsersCsv(filteredUsers),
       'text/csv;charset=utf-8;',
     );
-    setNotice({ tone: 'success', text: 'Exported the visible user list.' });
+    notifySuccess('Exported the visible user list.');
   }
 
   function clearFilters() {
@@ -548,7 +528,7 @@ export default function RefinedUserManagementPage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => setNotice({ tone: 'info', text: 'Direct user creation is not available in this workspace yet.' })}
+              onClick={() => notifyInfo('Direct user creation is not available in this workspace yet.')}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-[0_20px_50px_-25px_rgba(109,40,217,0.85)] transition hover:bg-violet-700"
             >
               <Plus size={16} />
@@ -565,8 +545,6 @@ export default function RefinedUserManagementPage() {
           </div>
         </div>
       </section>
-
-      <NoticeBanner notice={notice} />
 
       {blockedDeletion ? (
         <section role="alert" className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 text-amber-950">

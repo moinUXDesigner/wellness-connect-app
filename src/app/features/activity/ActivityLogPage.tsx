@@ -20,6 +20,7 @@ import {
   Waves,
 } from 'lucide-react';
 import { getActivityLogs, type ActivityLogFilters } from '../shared/services/activityApi';
+import { notifySuccess, toast } from '../shared/lib/toast';
 import type { ActivityLogActorOption, ActivityLogEntry, ActivityLogPagination, ActivityLogSummary, Role } from '../../types';
 import { UserAvatar } from '../../components/UserAvatar';
 import {
@@ -645,7 +646,6 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
   const [adminFilters, setAdminFilters] = useState<AdminFilterState>(defaultAdminFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -709,7 +709,6 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
 
   function applyAdminFilters() {
     const range = rangeForPreset(adminFilters.datePreset);
-    setNotice('');
     setSelectedEntryId(null);
     setFilters({
       page: 1,
@@ -724,7 +723,6 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
 
   function clearAdminFilters() {
     setAdminFilters(defaultAdminFilters);
-    setNotice('');
     setSelectedEntryId(null);
     setFilters({ page: 1, pageSize: 10 });
   }
@@ -732,18 +730,18 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
   function exportVisibleEntries() {
     if (!visibleEntries.length) return;
     downloadFile(`activity-logs-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(visibleEntries), 'text/csv;charset=utf-8;');
-    setNotice('Exported the visible activity list.');
+    notifySuccess('Exported the visible activity list.');
   }
 
   async function copyActivitySummary(item: { entry: ActivityLogEntry; presentation: ActivityPresentation }) {
     const summaryText = `${item.presentation.summary} (${item.presentation.performerName}, ${formatDateLabel(item.entry.occurredAt).day} ${formatDateLabel(item.entry.occurredAt).time})`;
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(summaryText);
-      setNotice('Copied the activity summary.');
+      notifySuccess('Copied the activity summary.');
       return;
     }
 
-    setNotice('Clipboard access is not available in this browser.');
+    toast.error('Clipboard access is not available in this browser.');
   }
 
   function exportSingleRecord(item: { entry: ActivityLogEntry; presentation: ActivityPresentation }) {
@@ -761,7 +759,7 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
       }, null, 2),
       'application/json;charset=utf-8;',
     );
-    setNotice('Exported the selected activity record.');
+    notifySuccess('Exported the selected activity record.');
   }
 
   if (!isAdminConsole) {
@@ -932,12 +930,6 @@ export default function ActivityLogPage({ title, subtitle, emptyMessage, showAdm
           </button>
         </div>
       </section>
-
-      {notice ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {notice}
-        </div>
-      ) : null}
 
       {error ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

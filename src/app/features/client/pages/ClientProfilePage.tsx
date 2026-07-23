@@ -22,6 +22,7 @@ import { meRequest, updateAccountAvatarRequest, updateProfileRequest } from '../
 import { ProfileAvatarUploader } from '../../../components/ProfileAvatarUploader';
 import type { UserAvatarUser } from '../../../components/UserAvatar';
 import profileHeroBg from '../../../../assets/client-profile-hero-bg.svg';
+import { notifyError, notifySuccess, toast } from '../../shared/lib/toast';
 
 const goals = [
   { value: 'fitness', label: 'Fitness' },
@@ -63,7 +64,6 @@ export default function ClientProfilePage() {
   const [preferredLanguage, setPreferredLanguage] = useState<(typeof languages)[number]['value']>('en');
   const [consent, setConsent] = useState(Boolean(authUser?.consent_to_terms));
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   const email = authUser?.email ?? '';
@@ -91,13 +91,12 @@ export default function ClientProfilePage() {
       applyClientDemographics(user);
       setProfileUser(user);
     }).catch(() => {
-      setNotice('Unable to load latest profile right now.');
+      toast.error('Unable to load latest profile right now.');
     });
   }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice('');
     setLoading(true);
     try {
       const gender = genderChoice === 'self_describe' ? genderSelfDescription.trim() : genderChoice;
@@ -116,9 +115,9 @@ export default function ClientProfilePage() {
         setProfileUser(data.user);
         applyClientDemographics(data.user);
       }
-      setNotice('Profile updated successfully.');
+      notifySuccess('Profile updated successfully.');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Profile update failed.');
+      notifyError(error, 'Profile update failed.');
     } finally {
       setLoading(false);
     }
@@ -130,7 +129,7 @@ export default function ClientProfilePage() {
     setName(data.user.name);
     setPhone(data.user.phone ?? '');
     applyClientDemographics(data.user);
-    setNotice(data.message);
+    notifySuccess(data.message);
   }
 
   return (
@@ -242,8 +241,6 @@ export default function ClientProfilePage() {
           </span>
           I confirm consent for data processing under platform terms.
         </label>
-
-        {notice ? <p className="rounded-lg border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-700">{notice}</p> : null}
 
         <button
           type="submit"

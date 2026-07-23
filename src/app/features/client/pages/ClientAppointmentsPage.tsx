@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ClientAppointment } from '../../shared/services/api';
+import { notifyError } from '../../shared/lib/toast';
 import {
   cancelAppointmentAdapter,
   listAppointmentsAdapter,
@@ -173,7 +174,6 @@ function scheduleAnchorDate(records: ClientAppointment[]) {
 export default function ClientAppointmentsPage() {
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState<ClientAppointment[]>([]);
-  const [notice, setNotice] = useState('');
   const [activeTab, setActiveTab] = useState<EventTab>('today');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -191,7 +191,7 @@ export default function ClientAppointmentsPage() {
   }
 
   useEffect(() => {
-    refresh().catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to load appointments'));
+    refresh().catch((error) => notifyError(error, 'Unable to load appointments'));
   }, []);
 
   const appointmentsByDay = useMemo(() => appointments.reduce<Record<string, ClientAppointment[]>>((groups, appointment) => {
@@ -252,8 +252,6 @@ export default function ClientAppointmentsPage() {
           </button>
         </div>
       </div>
-
-      {notice ? <p className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-sm text-violet-700">{notice}</p> : null}
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,0.94fr)_minmax(520px,1.06fr)]">
         <AppointmentsCalendarPanel
