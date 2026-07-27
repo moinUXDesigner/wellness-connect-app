@@ -59,23 +59,11 @@ The API subdomain must point to:
 public_html/api-wellness/public
 ```
 
-Create the production backend env file from:
-
-```text
-backend/.env.production.example
-```
-
-Save it on Hostinger as:
-
-```text
-public_html/api-wellness/.env
-```
-
-Update the database and mail values before running the app.
+`backend/.env.production.example` in this repo is a **placeholder-only reference** — it is never uploaded as-is and never contains real credentials. The actual `.env` is rendered and deployed automatically by the GitHub Actions workflow from repo secrets (see CI/CD section below). Manual upload of `.env` is only a fallback if you're deploying without CI — see `docs/GITHUB_SECRETS.md` for what values it needs.
 
 ## Backend Commands
 
-If Hostinger terminal access is available, run these from `public_html/api-wellness`:
+If deploying manually (no CI) and Hostinger terminal access is available, run these from `public_html/api-wellness`:
 
 ```bash
 composer install --no-dev --optimize-autoloader
@@ -87,6 +75,14 @@ php artisan storage:link
 ```
 
 If dependencies are installed locally instead, upload the `vendor/` directory with the backend.
+
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy-hostinger.yml` deploys automatically after `Frontend CI`/`Backend CI` pass on `main`, using `rsync`/`scp` over SSH (no FTP). It renders the backend's production `.env` entirely from GitHub secrets and uploads it on every deploy, then runs `migrate --force`, `config:cache`, `route:cache`, `storage:link` over SSH.
+
+Full list of required secrets/variables: **`docs/GITHUB_SECRETS.md`**.
+
+`key:generate` is intentionally never run by the workflow — the app key is a fixed `LARAVEL_APP_KEY` secret instead, so re-deploys don't invalidate live sessions.
 
 ## Android / Capacitor
 
