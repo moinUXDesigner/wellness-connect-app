@@ -51,7 +51,7 @@ The workflow now renders the backend's production `.env` entirely from these sec
 | `VITE_API_URL` | `https://api-wellness.khajamynuddin.com/api/v1` |
 | `HOSTINGER_SSH_PORT` | `65002` |
 
-## How the `.env` gets to the server
+## How the `.env` gets to the serverr
 
 `deploy-backend` in the workflow: rsyncs the backend code (excluding `.env`/`.env.*`/`tests/`/`.git`) → renders a fresh `.env` from the secrets above into a runner-local temp file → `scp`s it to `/public_html/api-wellness/.env` → deletes the local temp copy → SSHes in to run `migrate --force`, `config:cache`, `route:cache`, `storage:link`.
 
