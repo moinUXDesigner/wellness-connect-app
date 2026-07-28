@@ -47,7 +47,8 @@ jobs:
             "${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:public_html/wellness/"
 
   deploy-backend:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Backend CI')
+    needs: deploy-frontend
+    if: always() && (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Backend CI'))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -96,7 +97,7 @@ jobs:
           RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
-          cat > .env.deploy <<EOF
+          cat > .env.template <<'EOF'
           APP_NAME=WellnessConnect
           APP_ENV=production
           APP_KEY=${APP_KEY}
@@ -146,7 +147,7 @@ jobs:
           MAIL_USERNAME=${MAIL_USERNAME}
           MAIL_PASSWORD=${MAIL_PASSWORD}
           MAIL_FROM_ADDRESS="noreply@khajamynuddin.com"
-          MAIL_FROM_NAME="\${APP_NAME}"
+          MAIL_FROM_NAME="${APP_NAME}"
 
           RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
           RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
@@ -155,9 +156,12 @@ jobs:
           GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
           SANCTUM_TOKEN_EXPIRY_MINUTES=10080
 
-          VITE_APP_NAME="\${APP_NAME}"
+          VITE_APP_NAME="${APP_NAME}"
           EOF
-          sed -i 's/^[[:space:]]*//' .env.deploy
+          sed -i 's/^[[:space:]]*//' .env.template
+          envsubst '$APP_KEY $DB_DATABASE $DB_USERNAME $DB_PASSWORD $MAIL_USERNAME $MAIL_PASSWORD $RAZORPAY_KEY_ID $RAZORPAY_KEY_SECRET $RAZORPAY_WEBHOOK_SECRET $GOOGLE_CLIENT_ID' \
+            < .env.template > .env.deploy
+          rm .env.template
 
       - name: Upload rendered .env over SSH
         env:
