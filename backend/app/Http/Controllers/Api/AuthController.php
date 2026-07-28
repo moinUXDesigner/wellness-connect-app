@@ -27,10 +27,14 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly ActivityLogService $activityLogs,
-        private readonly SmsVerificationSender $smsVerificationSender,
         private readonly GoogleIdTokenVerifier $googleIdTokenVerifier,
     )
     {
+    }
+
+    private function smsVerificationSender(): SmsVerificationSender
+    {
+        return app(SmsVerificationSender::class);
     }
 
     public function register(Request $request): JsonResponse
@@ -112,14 +116,14 @@ class AuthController extends Controller
                 'mobile' => $mobile,
             ], JSON_THROW_ON_ERROR)),
             'otp_hash' => Hash::make($otp),
-            'provider' => $this->smsVerificationSender->providerName(),
+            'provider' => $this->smsVerificationSender()->providerName(),
             'status' => 'pending',
             'attempts' => 0,
             'expires_at' => $now->copy()->addMinutes((int) config('services.trainer_otp.expiry_minutes', 10)),
             'resend_available_at' => $now->copy()->addSeconds((int) config('services.trainer_otp.resend_seconds', 60)),
         ]);
 
-        $this->smsVerificationSender->send($mobile, $otp);
+        $this->smsVerificationSender()->send($mobile, $otp);
 
         return response()->json([
             'challengeToken' => $token,
@@ -208,7 +212,7 @@ class AuthController extends Controller
             'expires_at' => $now->copy()->addMinutes((int) config('services.trainer_otp.expiry_minutes', 10)),
             'resend_available_at' => $now->copy()->addSeconds((int) config('services.trainer_otp.resend_seconds', 60)),
         ])->save();
-        $this->smsVerificationSender->send((string) $challenge->mobile, $otp);
+        $this->smsVerificationSender()->send((string) $challenge->mobile, $otp);
 
         return response()->json([
             'challengeToken' => $validated['challengeToken'],
