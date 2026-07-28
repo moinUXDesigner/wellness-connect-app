@@ -157,6 +157,7 @@ jobs:
 
           VITE_APP_NAME="\${APP_NAME}"
           EOF
+          sed -i 's/^[[:space:]]*//' .env.deploy
 
       - name: Upload rendered .env over SSH
         env:
