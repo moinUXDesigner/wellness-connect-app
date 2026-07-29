@@ -1,5 +1,6 @@
 import { getAuthState, setAuthState, type AuthUser } from '../auth/auth';
 import {
+  createHistoryItem,
   findTrainerApplication,
   mergeTrainerOnboardingValues,
   readTrainerApplications,

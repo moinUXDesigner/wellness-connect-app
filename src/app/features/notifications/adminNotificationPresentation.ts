@@ -409,11 +409,12 @@ export function groupAdminNotifications(
     groups.earlier.push(item);
   });
 
-  return [
+  const orderedGroups: AdminNotificationGroup[] = [
     { key: 'today', title: 'Today', items: groups.today },
     { key: 'yesterday', title: 'Yesterday', items: groups.yesterday },
     { key: 'earlier', title: 'Earlier', items: groups.earlier },
-  ].filter((group) => group.items.length > 0);
+  ];
+  return orderedGroups.filter((group) => group.items.length > 0);
 }
 
 export function calculateAdminNotificationOverview(items: AdminNotificationViewModel[]): AdminNotificationOverview {

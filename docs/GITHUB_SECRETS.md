@@ -1,60 +1,46 @@
 # GitHub Actions Secrets & Variables — Hostinger Deploy
 
-Used by `.github/workflows/deploy-hostinger.yml`. Add these under repo **Settings → Secrets and variables → Actions**.
+Used by `.github/workflows/ci-cd.yml`'s `deploy` job, which only runs for a push to `main` after both the `frontend` and `backend` jobs succeed, and only within the `production` GitHub Environment (see `docs/SECURE_PRODUCTION_DEPLOYMENT.md` for how to configure that environment's branch restriction and required reviewers).
 
-The workflow now renders the backend's production `.env` entirely from these secrets and uploads it over SSH on every deploy — nothing sensitive needs to be hand-placed on the server or committed to the repo.
+**Model change from earlier in this project's history:** the workflow no longer renders or uploads the production `.env` on every deploy. It only ever handles SSH connection details — no database, mail, Razorpay, or app-key secrets pass through GitHub Actions at all. `.env` is provisioned once, manually, directly on the server (see `docs/SECURE_PRODUCTION_DEPLOYMENT.md`).
 
-## Secrets (Secrets tab)
-
-**SSH access (already added):**
+## Secrets (Settings → Environments → production → Environment secrets)
 
 | Name | Purpose |
 |---|---|
 | `HOSTINGER_SSH_HOST` | SSH host — hPanel → Advanced → SSH Access |
 | `HOSTINGER_SSH_USER` | SSH username — same page |
-| `HOSTINGER_SSH_KEY` | Private key (RSA 4096) matching a public key added under SSH Access → Manage SSH Keys |
+| `HOSTINGER_SSH_KEY` | Private key (passphrase-free, dedicated to CI — **not** your personal passphrase-protected key) matching a public key added under SSH Access → Manage SSH Keys |
+| `HOSTINGER_KNOWN_HOSTS` | The exact `known_hosts` line(s) for the Hostinger SSH endpoint, obtained and verified independently (not a live `ssh-keyscan`) — see the deployment guide for how to get and verify this |
 
-**Laravel app:**
+## Environment variables (Settings → Environments → production → Environment variables)
 
-| Name | Purpose |
+Only used by the `deploy` job, which declares `environment: production`:
+
+| Name | Value |
 |---|---|
-| `LARAVEL_APP_KEY` | The app's encryption key. Generate once and reuse forever — do **not** regenerate on every deploy (that invalidates all existing sessions/encrypted data). Format: `base64:` followed by 32 random bytes, e.g. output of `openssl rand -base64 32` prefixed with `base64:`. |
+| `HOSTINGER_SSH_PORT` | Hostinger's SSH port (e.g. `65002` — check hPanel → Advanced → SSH Access; shared hosting rarely uses 22) |
 
-**Database (new — matches the database you just created in hPanel):**
-
-| Name | Purpose |
-|---|---|
-| `HOSTINGER_DB_DATABASE` | Database name, e.g. `u484303972_aura_connect`-style name from hPanel → Databases |
-| `HOSTINGER_DB_USERNAME` | Database user |
-| `HOSTINGER_DB_PASSWORD` | Database password |
-
-**Mail (Hostinger SMTP mailbox for `noreply@khajamynuddin.com`):**
-
-| Name | Purpose |
-|---|---|
-| `HOSTINGER_MAIL_USERNAME` | Full mailbox address, e.g. `noreply@khajamynuddin.com` |
-| `HOSTINGER_MAIL_PASSWORD` | Mailbox password |
-
-**Third-party integrations (leave empty if not used yet):**
-
-| Name | Purpose |
-|---|---|
-| `RAZORPAY_KEY_ID` | Razorpay payment gateway |
-| `RAZORPAY_KEY_SECRET` | Razorpay payment gateway |
-| `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook verification |
-| `GOOGLE_CLIENT_ID` | "Continue with Google" on trainer registration |
-
-## Variables (Variables tab, already added)
+## Repository variables (Settings → Secrets and variables → Actions → Variables tab, repo-level — NOT under Environments)
 
 | Name | Value |
 |---|---|
 | `VITE_API_URL` | `https://api-wellness.khajamynuddin.com/api/v1` |
-| `HOSTINGER_SSH_PORT` | `65002` |
 
-## How the `.env` gets to the serverr
+**This one must be repository-level, not environment-scoped.** It's read by the `frontend` job, which intentionally has no `environment: production` attached (it must run on every PR, including from forks, without any production gating). Environment-scoped variables are only visible to jobs that declare that environment — if `VITE_API_URL` were placed under the `production` environment instead, `frontend` would silently build with an empty value. The workflow's build step fails fast with a clear error if this variable is ever empty, rather than shipping a build with a broken API base URL.
 
-`deploy-backend` in the workflow: rsyncs the backend code (excluding `.env`/`.env.*`/`tests/`/`.git`) → renders a fresh `.env` from the secrets above into a runner-local temp file → `scp`s it to `/public_html/api-wellness/.env` → deletes the local temp copy → SSHes in to run `migrate --force`, `config:cache`, `route:cache`, `storage:link`.
+## No longer stored in GitHub Actions
 
-`key:generate` is intentionally never run automatically — `LARAVEL_APP_KEY` is a fixed secret you generate once, so every deploy writes the same key and doesn't invalidate live sessions.
+These used to be rendered into `.env` by the workflow. They are now provisioned **once, manually**, directly in the server's `.env` file (outside the `public/` document root, `chmod 600`) — see `docs/SECURE_PRODUCTION_DEPLOYMENT.md` for the exact procedure:
 
-`backend/.env.production.example` in the repo stays a **placeholder-only** reference file (no real credentials) — it's not what actually gets deployed anymore.
+- `LARAVEL_APP_KEY` (never regenerated by CI or by hand once set — regenerating invalidates all live sessions/encrypted data)
+- `HOSTINGER_DB_DATABASE` / `HOSTINGER_DB_USERNAME` / `HOSTINGER_DB_PASSWORD`
+- `HOSTINGER_MAIL_USERNAME` / `HOSTINGER_MAIL_PASSWORD`
+- `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET`
+- `GOOGLE_CLIENT_ID`
+
+If any of these six older GitHub secrets still exist in the repo from before this change, they can be safely deleted once the server's `.env` has been confirmed to hold the real values.
+
+## How a deploy actually reaches the server now
+
+`ci-cd.yml`'s `deploy` job (gated by the `production` environment): downloads the already-tested `backend-app` and `frontend-dist` artifacts built by the `backend`/`frontend` jobs (no `composer install`/`npm ci` re-run inside the deploy job) → configures SSH using the pinned `HOSTINGER_KNOWN_HOSTS` value (not a live `ssh-keyscan`) → validates the remote paths and checks whether an application is already deployed there → if one is, backs up its database first (using the *currently deployed* app's own bootstrap to resolve DB credentials in-process — never parsed from `.env` with shell `source`/`grep`, so passwords with spaces/`$`/quotes/`#`/semicolons are handled safely; the password never appears on a command line, in workflow output, or in logs) → only then `rsync`s the backend (excluding `.env`, `tests/`, and all Laravel runtime state: `storage/app/public/`, `storage/logs/`, `storage/framework/{sessions,views,cache}/`, `storage/backups/`, `public/storage`) → ensures those runtime directories exist → runs migrations and warms caches over SSH → health-checks `/api/health` → `rsync`s the frontend → health-checks the frontend root. `key:generate` is never run. Database backups are written under `~/private_backups/api-wellness/` on the server — outside the deployed application directory and outside any web-servable path — with a 10-backup retention limit.

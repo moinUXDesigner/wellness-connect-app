@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Outlet } from 'react-router';
-import { motion } from 'motion/react';
+import { motion, type TargetAndTransition } from 'motion/react';
 import Sidebar, { type NavItem } from './Sidebar';
 import Topbar from './Topbar';
 import { BottomNav } from '../components/BottomNav';
@@ -34,7 +34,7 @@ export default function DashboardLayout({
       <motion.div
         initial={false}
         style={{ '--sidebar-offset': '288px' } as CSSProperties}
-        animate={{ '--sidebar-offset': `${sidebarWidth}px` } as CSSProperties}
+        animate={{ '--sidebar-offset': `${sidebarWidth}px` } as unknown as TargetAndTransition}
         transition={{ type: 'spring', stiffness: 240, damping: 28 }}
         className="dashboard-content min-w-0 max-w-full overflow-x-clip"
       >
