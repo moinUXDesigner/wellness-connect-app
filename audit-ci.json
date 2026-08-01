@@ -1,0 +1,23 @@
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  "low": false,
+  "moderate": false,
+  "high": true,
+  "critical": true,
+  "allowlist": [
+    {
+      "GHSA-qwww-vcr4-c8h2|react-router": {
+        "active": true,
+        "expiry": "2026-10-31",
+        "notes": "React Router RSC-mode CSRF bypass (CWE-352). Aura is a client-only Vite SPA using <BrowserRouter> exclusively -- verified zero imports of react-router/rsc, unstable_RSCStaticRouter, createFromReadableStream, or any other RSC entry point anywhere in src/ (grepped whole tree, no matches). The vulnerable code path is never reached. Fix requires react-router@8.3.0, a breaking major version; deferred pending a scheduled v7->v8 migration with its own regression pass, not attempted under launch time pressure. Owner: @moinUXDesigner. Re-review before/at expiry: either complete the v8 migration or renew this entry with updated justification -- do not silently extend without re-checking the advisory's status."
+      }
+    },
+    {
+      "GHSA-mh99-v99m-4gvg|workbox-build>@trickfilm400/rollup-plugin-off-main-thread>ejs>jake>filelist>minimatch>brace-expansion": {
+        "active": true,
+        "expiry": "2026-10-31",
+        "notes": "brace-expansion ReDoS/DoS (CWE-400/CWE-770). Reachable only through vite-plugin-pwa's workbox-build dependency, invoked solely at build time (npm run build's PWA service-worker generation step, mode=generateSW) to process this repo's own trusted local file listing. Confirmed via `npm ls --prod workbox-build` returning empty -- it is dev-only and never bundled into dist/ or shipped to any browser. No attacker-controlled input reaches this path in Aura's usage. Fix requires forcing vite-plugin-pwa to a breaking major version; deferred pending a scheduled migration, not attempted under launch time pressure. Owner: @moinUXDesigner. Re-review before/at expiry: either complete the vite-plugin-pwa upgrade or renew this entry with updated justification -- do not silently extend without re-checking the advisory's status."
+      }
+    }
+  ]
+}

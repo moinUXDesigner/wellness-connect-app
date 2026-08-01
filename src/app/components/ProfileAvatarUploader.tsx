@@ -46,7 +46,7 @@ export function ProfileAvatarUploader({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => () => cropperRef.current?.destroy(), []);
+  useEffect(() => () => { cropperRef.current?.destroy(); }, []);
 
   function closeEditor() {
     cropperRef.current?.destroy();

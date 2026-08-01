@@ -1,5 +1,5 @@
 import { mockAppointments } from '../../../data/mockAppointments';
-import type { AppointmentSummary, DashboardMetric, ProgramSummary, Role, TicketSummary, UserSummary } from '../../types';
+import type { AppointmentSummary, DashboardMetric, ProgramSummary, Role, TicketSummary, UserSummary } from '../../../types';
 import { getAuthState } from '../../auth/auth';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';

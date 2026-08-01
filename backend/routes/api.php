@@ -229,3 +229,19 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/trainer-applications/{applicationId}', [TrainerApplicationController::class, 'show']);
     Route::post('/support-requests', [SupportRequestController::class, 'store']);
 });
+
+// Deliberately outside the /v1 prefix and unauthenticated so deploy tooling
+// can probe it without credentials. Must never expose DB state, stack
+// traces, or any internal detail beyond a bare status -- failures are
+// logged server-side only.
+Route::get('/health', function () {
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+    } catch (\Throwable $exception) {
+        report($exception);
+
+        return response()->json(['status' => 'degraded'], 503);
+    }
+
+    return response()->json(['status' => 'ok']);
+});

@@ -650,7 +650,7 @@ function RightRail({ workspace, homeworkTemplateId, setHomeworkTemplateId, onAss
       <Panel>
         <RailHeader icon={<ClipboardCheck size={16} />} title="Assessments" action="View all" />
         <div className="mt-3 divide-y divide-slate-100">
-          {(workspace.assessments.length ? workspace.assessments : assessmentLabels.map((item, index) => ({ id: index, assessmentType: item.type, label: item.label, score: 0, severity: 'Not recorded', tone: 'neutral' }))).slice(0, 4).map((assessment) => (
+          {(workspace.assessments.length ? workspace.assessments : assessmentLabels.map((item, index) => ({ id: index, assessmentType: item.type, label: item.label, score: 0, severity: 'Not recorded', tone: 'neutral', administeredAt: null as string | null }))).slice(0, 4).map((assessment) => (
             <div key={`${assessment.assessmentType}-${assessment.id}`} className="flex items-center justify-between py-3 text-sm">
               <span><strong className="block text-[#111941]">{assessment.label ?? assessment.assessmentType.toUpperCase()}</strong><span className="text-xs text-slate-500">{assessment.administeredAt ? new Date(assessment.administeredAt).toLocaleDateString() : 'Start assessment'}</span></span>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${assessmentToneClass(assessment.tone)}`}>{assessment.score || '-'} {assessment.severity}</span>

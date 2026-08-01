@@ -62,7 +62,7 @@ export const trainerOnboardingSchema = z
     profile: z.object({
       fullName: z.string().trim().min(2, 'Enter your full name.'),
       gender: z.enum(['Woman', 'Man', 'Non-binary', 'Prefer not to say'], {
-        errorMap: () => ({ message: 'Choose the gender you want shown on your profile.' }),
+        error: () => 'Choose the gender you want shown on your profile.',
       }),
       dateOfBirth: z
         .string()

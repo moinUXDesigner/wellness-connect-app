@@ -94,7 +94,7 @@ function IconButton({ children, label, badge }: { children: ReactNode; label: st
 }
 
 function ProgressTrendSection({ payload }: { payload: ProgressReviewWorkspaceData }) {
-  const performanceTooltip = ({ active, payload: chartPayload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) => {
+  const performanceTooltip = ({ active, payload: chartPayload, label }: { active?: boolean; payload?: Array<{ value?: number }>; label?: string }) => {
     if (!active || !chartPayload?.length) return null;
     return (
       <div className="rounded-2xl border border-indigo-100 bg-[#6246ea] px-3 py-2 text-sm text-white shadow-lg">

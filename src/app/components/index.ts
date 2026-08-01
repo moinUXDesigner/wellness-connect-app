@@ -14,7 +14,7 @@ export { Badge } from './Badge';
 export type { BadgeProps } from './Badge';
 
 export { BottomNav } from './BottomNav';
-export type { BottomNavProps, BottomNavItem } from './BottomNav';
+export type { BottomNavProps } from './BottomNav';
 
 export { Button } from './Button';
 export type { ButtonProps } from './Button';

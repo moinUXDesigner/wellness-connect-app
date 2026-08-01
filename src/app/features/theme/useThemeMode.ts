@@ -87,7 +87,7 @@ export function initializeThemeMode() {
 }
 
 export function useThemeMode() {
-  const mode = useSyncExternalStore(subscribe, getThemeSnapshot, () => 'light');
+  const mode = useSyncExternalStore<ThemeMode>(subscribe, getThemeSnapshot, () => 'light');
 
   useEffect(() => {
     applyTheme(mode);

@@ -1,0 +1,12 @@
+# Require review from repo owners on the highest-risk paths.
+# See docs/SECURE_PRODUCTION_DEPLOYMENT.md for how to enable required-reviewer
+# enforcement on these paths via branch protection / required status checks.
+
+/.github/workflows/           @moinUXDesigner
+/backend/app/Http/Controllers/Api/AuthController.php  @moinUXDesigner
+/backend/database/migrations/ @moinUXDesigner
+/backend/app/Services/RazorpayPaymentGateway.php       @moinUXDesigner
+/backend/app/Http/Controllers/Api/PaymentWebhookController.php @moinUXDesigner
+/backend/config/cors.php      @moinUXDesigner
+/backend/config/sanctum.php   @moinUXDesigner
+/backend/config/session.php   @moinUXDesigner
